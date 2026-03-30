@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Droplets, Settings, Save, X, AlertTriangle, CheckCircle, Info, TrendingUp, TrendingDown } from 'lucide-react';
-import api from '../../../services/api';  // Corrected path
+import api from '../../../services/api';
 import toast from 'react-hot-toast';
 
 const TankSettings = () => {
@@ -24,10 +24,22 @@ const TankSettings = () => {
   const [saving, setSaving] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [validationErrors, setValidationErrors] = useState({});
+  const [wasteInfo, setWasteInfo] = useState(null); // ADD THIS STATE
 
   useEffect(() => {
     fetchCurrentTankData();
+    fetchWasteInfo(); // ADD THIS LINE
   }, []);
+
+  // ADD THIS NEW FUNCTION
+  const fetchWasteInfo = async () => {
+    try {
+      const response = await api.get('/tank/waste-info');
+      setWasteInfo(response.data.data);
+    } catch (error) {
+      console.error('Failed to fetch waste info:', error);
+    }
+  };
 
   const fetchCurrentTankData = async () => {
     try {
@@ -82,6 +94,7 @@ const TankSettings = () => {
       toast.success(`Tank initialized successfully with capacity ${data.tankCapacity}L`);
       setShowConfirmModal(false);
       setFormData({ ...formData, notes: '' });
+      fetchWasteInfo(); // REFRESH WASTE INFO
     } catch (error) {
       console.error('Failed to initialize tank:', error);
       toast.error(error.response?.data?.message || 'Failed to initialize tank');
@@ -112,6 +125,7 @@ const TankSettings = () => {
       setTankData(data);
       toast.success(`Tank capacity updated to ${formData.tankCapacity}L`);
       setFormData({ ...formData, notes: '' });
+      fetchWasteInfo(); // REFRESH WASTE INFO
     } catch (error) {
       console.error('Failed to update capacity:', error);
       toast.error(error.response?.data?.message || 'Failed to update tank capacity');
@@ -137,6 +151,7 @@ const TankSettings = () => {
       setTankData(data);
       toast.success(`Water level updated to ${formData.currentLevel}L`);
       setFormData({ ...formData, notes: '' });
+      fetchWasteInfo(); // REFRESH WASTE INFO
     } catch (error) {
       console.error('Failed to update level:', error);
       toast.error(error.response?.data?.message || 'Failed to update water level');
@@ -171,6 +186,41 @@ const TankSettings = () => {
         <h2 className="text-xl font-semibold text-gray-900">Tank Configuration</h2>
         <p className="text-sm text-gray-500 mt-1">Configure water tank capacity and current water level</p>
       </div>
+
+      {/* ADD THIS WASTE INFORMATION CARD */}
+      {wasteInfo && (
+        <div className="bg-orange-50 rounded-xl shadow-sm border border-orange-200 p-6 mb-6">
+          <div className="flex items-center space-x-2 mb-4">
+            <AlertTriangle className="w-5 h-5 text-orange-600" />
+            <h3 className="text-lg font-medium text-orange-800">Water Waste Policy</h3>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="bg-white rounded-lg p-3">
+              <p className="text-sm text-gray-600">When tank reaches full capacity</p>
+              <p className="text-xl font-bold text-orange-600">{wasteInfo.wastePercentage}% Waste Deduction</p>
+              <p className="text-xs text-gray-500 mt-1">
+                {wasteInfo.wasteAmountOnFull}L will be deducted from {wasteInfo.fullCapacity}L
+              </p>
+            </div>
+            
+            <div className="bg-white rounded-lg p-3">
+              <p className="text-sm text-gray-600">Effective water level after full fill</p>
+              <p className="text-xl font-bold text-green-600">{wasteInfo.effectiveLevelWhenFull}L</p>
+              <p className="text-xs text-gray-500 mt-1">
+                Instead of {wasteInfo.fullCapacity}L, you get {wasteInfo.effectiveLevelWhenFull}L usable water
+              </p>
+            </div>
+          </div>
+          
+          <div className="mt-3 p-2 bg-orange-100 rounded-lg">
+            <p className="text-xs text-orange-700">
+              ⚠️ Note: 20% waste is automatically deducted when water level reaches full capacity to account for 
+              water loss during filling, spillage, evaporation, and maintenance.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Current Status Card */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">

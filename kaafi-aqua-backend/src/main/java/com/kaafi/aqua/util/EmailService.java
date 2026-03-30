@@ -17,7 +17,7 @@ public class EmailService {
     
     public void sendPasswordResetEmail(String to, String token) {
         try {
-            String resetUrl = "http://localhost:3000/reset-password?token=" + token;
+            String resetUrl = "http://localhost:5173/reset-password?token=" + token;
             String subject = "Password Reset Request - Kaafi Aqua";
             String content = "<html><body>" +
                 "<h2>Password Reset Request</h2>" +

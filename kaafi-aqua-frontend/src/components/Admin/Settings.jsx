@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Package, Box, Droplets, Settings as SettingsIcon, Plus, Edit, Trash2, Search, X, Save, DollarSign } from 'lucide-react';
+import { Package, Box, Droplets, Settings as SettingsIcon, FolderTree, Plus, Edit, Trash2, Search, X, Save, DollarSign } from 'lucide-react';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
 
@@ -8,12 +8,14 @@ import ProductsManagement from './SettingsTabs/ProductsManagement';
 import ContainersManagement from './SettingsTabs/ContainersManagement';
 import TankSettings from './SettingsTabs/TankSettings';
 import SystemSettings from './SettingsTabs/SystemSettings';
+import CategoriesManagement from './SettingsTabs/CategoriesManagement';
 
 const Settings = () => {
   const [activeTab, setActiveTab] = useState('products');
 
   const tabs = [
     { id: 'products', name: 'Products', icon: Package },
+    { id: 'categories', name: 'Categories', icon: FolderTree }, 
     { id: 'containers', name: 'Containers', icon: Box },
     { id: 'tank', name: 'Tank', icon: Droplets },
     { id: 'system', name: 'System', icon: SettingsIcon },
@@ -52,6 +54,7 @@ const Settings = () => {
       {/* Tab Content */}
       <div>
         {activeTab === 'products' && <ProductsManagement />}
+        {activeTab === 'categories' && <CategoriesManagement />}
         {activeTab === 'containers' && <ContainersManagement />}
         {activeTab === 'tank' && <TankSettings />}
         {activeTab === 'system' && <SystemSettings />}

@@ -76,7 +76,7 @@ public class ProductController {
         return ResponseEntity.ok(ApiResponse.success("Product deleted successfully", null));
     }
     
-    // Category endpoints
+    // Category endpoints - FULL CRUD
     @GetMapping("/product-categories")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<List<ProductCategory>>> getAllCategories() {
@@ -89,5 +89,26 @@ public class ProductController {
     public ResponseEntity<ApiResponse<ProductCategory>> getCategoryById(@PathVariable Long id) {
         ProductCategory category = productService.getCategoryById(id);
         return ResponseEntity.ok(ApiResponse.success(category));
+    }
+    
+    @PostMapping("/product-categories")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse<ProductCategory>> createCategory(@Valid @RequestBody ProductCategory category) {
+        ProductCategory createdCategory = productService.createCategory(category);
+        return ResponseEntity.ok(ApiResponse.success("Category created successfully", createdCategory));
+    }
+    
+    @PutMapping("/product-categories/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse<ProductCategory>> updateCategory(@PathVariable Long id, @Valid @RequestBody ProductCategory category) {
+        ProductCategory updatedCategory = productService.updateCategory(id, category);
+        return ResponseEntity.ok(ApiResponse.success("Category updated successfully", updatedCategory));
+    }
+    
+    @DeleteMapping("/product-categories/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse<Void>> deleteCategory(@PathVariable Long id) {
+        productService.deleteCategory(id);
+        return ResponseEntity.ok(ApiResponse.success("Category deleted successfully", null));
     }
 }

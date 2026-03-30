@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom'; // Change this line
 import { Lock, Eye, EyeOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
 
 const ResetPassword = () => {
-  const { token } = useParams();
+  const [searchParams] = useSearchParams(); // Change this
+  const token = searchParams.get('token'); // Get token from query param
   const navigate = useNavigate();
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -30,9 +31,12 @@ const ResetPassword = () => {
     
     setLoading(true);
     try {
-      await api.post('/auth/reset-password', {
-        token,
-        newPassword: formData.password
+      // Note: Your backend expects parameters, not JSON body
+      await api.post('/auth/reset-password', null, {
+        params: {
+          token: token,
+          newPassword: formData.password
+        }
       });
       
       toast.success('Password reset successful! Please login with your new password.');

@@ -84,6 +84,7 @@ public class ProductService {
             "Deleted product: " + product.getName());
     }
     
+    // Category CRUD methods
     public List<ProductCategory> getAllCategories() {
         return categoryRepository.findAll();
     }
@@ -91,5 +92,47 @@ public class ProductService {
     public ProductCategory getCategoryById(Long id) {
         return categoryRepository.findById(id)
             .orElseThrow(() -> new RuntimeException("Category not found with id: " + id));
+    }
+    
+    @Transactional
+    public ProductCategory createCategory(ProductCategory category) {
+        ProductCategory savedCategory = categoryRepository.save(category);
+        
+        activityLogger.log("system", "CREATE_CATEGORY", "ProductCategory", savedCategory.getId(), 
+            "Created category: " + savedCategory.getName() + " - Type: " + savedCategory.getType());
+        
+        return savedCategory;
+    }
+    
+    @Transactional
+    public ProductCategory updateCategory(Long id, ProductCategory categoryData) {
+        ProductCategory category = getCategoryById(id);
+        
+        category.setName(categoryData.getName());
+        category.setType(categoryData.getType());
+        category.setDescription(categoryData.getDescription());
+        
+        ProductCategory updatedCategory = categoryRepository.save(category);
+        
+        activityLogger.log("system", "UPDATE_CATEGORY", "ProductCategory", id, 
+            "Updated category: " + category.getName());
+        
+        return updatedCategory;
+    }
+    
+    @Transactional
+    public void deleteCategory(Long id) {
+        ProductCategory category = getCategoryById(id);
+        
+        // Check if category has products before deleting
+        long productCount = productRepository.countByCategoryId(id);
+        if (productCount > 0) {
+            throw new RuntimeException("Cannot delete category with " + productCount + " products. Reassign or delete products first.");
+        }
+        
+        categoryRepository.delete(category);
+        
+        activityLogger.log("system", "DELETE_CATEGORY", "ProductCategory", id, 
+            "Deleted category: " + category.getName());
     }
 }

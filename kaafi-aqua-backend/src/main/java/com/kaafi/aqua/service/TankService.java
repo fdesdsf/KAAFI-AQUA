@@ -21,6 +21,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
 
 @Slf4j
 @Service
@@ -31,6 +33,8 @@ public class TankService {
     private final TankUsageHistoryRepository usageHistoryRepository;
     private final TankRestockHistoryRepository restockHistoryRepository;
     private final ActivityLogger activityLogger;
+    
+    private static final double WASTE_PERCENTAGE = 0.20; // 20% waste
     
     public TankLevel getCurrentTankLevel() {
         return tankLevelRepository.findTopByOrderByIdDesc()
@@ -51,11 +55,34 @@ public class TankService {
         TankLevel currentTank = getCurrentTankLevel();
         
         int previousLevel = currentTank.getCurrentLevel();
-        int newLevel = Math.min(currentTank.getTankCapacity(), previousLevel + request.getAmountLiters());
+        int capacity = currentTank.getTankCapacity();
+        int potentialNewLevel = previousLevel + request.getAmountLiters();
+        
+        // CHECK IF RESTOCK WILL FILL TO FULL CAPACITY
+        int newLevel;
+        String wasteNote = "";
+        
+        if (potentialNewLevel >= capacity) {
+            // Calculate 20% waste deduction when filling to full
+            int wasteAmount = (int) Math.round(capacity * WASTE_PERCENTAGE);
+            int effectiveLevel = capacity - wasteAmount;
+            
+            newLevel = effectiveLevel;
+            wasteNote = String.format(" [WASTE: %dL (20%%) deducted from full capacity]", wasteAmount);
+            
+            log.warn("=== TANK WASTE DEDUCTION ON RESTOCK ===");
+            log.warn("Restock would fill to {}L capacity", capacity);
+            log.warn("20%% waste deducted: {}L", wasteAmount);
+            log.warn("Effective water level: {}L", effectiveLevel);
+            log.warn("Previous level: {}L, Restock amount: {}L", previousLevel, request.getAmountLiters());
+        } else {
+            newLevel = potentialNewLevel;
+        }
         
         currentTank.setCurrentLevel(newLevel);
         currentTank.setUpdatedBy(restockedBy);
-        currentTank.setNotes(request.getNotes());
+        String finalNotes = request.getNotes() != null ? request.getNotes() + wasteNote : wasteNote.trim();
+        currentTank.setNotes(finalNotes);
         TankLevel updatedTank = tankLevelRepository.save(currentTank);
         
         TankRestockHistory history = new TankRestockHistory();
@@ -63,11 +90,11 @@ public class TankService {
         history.setPreviousLevel(previousLevel);
         history.setNewLevel(newLevel);
         history.setRestockedBy(restockedBy);
-        history.setNotes(request.getNotes());
+        history.setNotes(finalNotes);
         restockHistoryRepository.save(history);
         
         activityLogger.log(restockedBy, "RESTOCK_TANK", "Tank", currentTank.getId(), 
-            "Restocked " + request.getAmountLiters() + "L. Previous: " + previousLevel + "L, New: " + newLevel + "L");
+            "Restocked " + request.getAmountLiters() + "L. Previous: " + previousLevel + "L, New: " + newLevel + "L" + wasteNote);
         
         return updatedTank;
     }
@@ -82,17 +109,32 @@ public class TankService {
             throw new RuntimeException("Current level cannot exceed tank capacity");
         }
         
+        // Apply waste deduction if initializing at full capacity
+        int finalLevel = request.getCurrentLevel();
+        String wasteNote = "";
+        
+        if (request.getCurrentLevel() >= request.getTankCapacity()) {
+            int wasteAmount = (int) Math.round(request.getTankCapacity() * WASTE_PERCENTAGE);
+            finalLevel = request.getTankCapacity() - wasteAmount;
+            wasteNote = String.format(" [WASTE: %dL (20%%) deducted from full capacity on initialization]", wasteAmount);
+            
+            log.warn("=== TANK WASTE DEDUCTION ON INITIALIZATION ===");
+            log.warn("Initialized at full capacity: {}L", request.getTankCapacity());
+            log.warn("20%% waste deducted: {}L", wasteAmount);
+            log.warn("Effective water level: {}L", finalLevel);
+        }
+        
         // Create new tank record
         TankLevel newTank = new TankLevel();
-        newTank.setCurrentLevel(request.getCurrentLevel());
+        newTank.setCurrentLevel(finalLevel);
         newTank.setTankCapacity(request.getTankCapacity());
         newTank.setUpdatedBy(initializedBy);
-        newTank.setNotes(request.getNotes());
+        newTank.setNotes((request.getNotes() != null ? request.getNotes() : "") + wasteNote);
         
         TankLevel savedTank = tankLevelRepository.save(newTank);
         
         activityLogger.log(initializedBy, "INITIALIZE_TANK", "TankLevel", savedTank.getId(),
-            "Tank initialized with capacity: " + request.getTankCapacity() + "L, current level: " + request.getCurrentLevel() + "L");
+            "Tank initialized with capacity: " + request.getTankCapacity() + "L, current level: " + finalLevel + "L" + wasteNote);
         
         log.info("Tank initialized successfully with ID: {}", savedTank.getId());
         return savedTank;
@@ -143,29 +185,50 @@ public class TankService {
         }
         
         int previousLevel = currentTank.getCurrentLevel();
-        currentTank.setCurrentLevel(request.getCurrentLevel());
+        int capacity = currentTank.getTankCapacity();
+        String wasteNote = "";
+        
+        // CHECK IF UPDATING TO FULL CAPACITY
+        int finalLevel = request.getCurrentLevel();
+        
+        if (request.getCurrentLevel() >= capacity && previousLevel < capacity) {
+            // Calculate 20% waste deduction when setting to full capacity
+            int wasteAmount = (int) Math.round(capacity * WASTE_PERCENTAGE);
+            finalLevel = capacity - wasteAmount;
+            wasteNote = String.format(" [WASTE: %dL (20%%) deducted from full capacity]", wasteAmount);
+            
+            log.warn("=== TANK WASTE DEDUCTION ON LEVEL UPDATE ===");
+            log.warn("Level update to full capacity: {}L", capacity);
+            log.warn("20%% waste deducted: {}L", wasteAmount);
+            log.warn("Effective water level: {}L", finalLevel);
+            log.warn("Previous level: {}L", previousLevel);
+        }
+        
+        currentTank.setCurrentLevel(finalLevel);
         currentTank.setUpdatedBy(updatedBy);
-        if (request.getNotes() != null) {
-            currentTank.setNotes(request.getNotes());
+        
+        String finalNotes = request.getNotes() != null ? request.getNotes() + wasteNote : wasteNote.trim();
+        if (request.getNotes() != null || !wasteNote.isEmpty()) {
+            currentTank.setNotes(finalNotes);
         }
         
         TankLevel updatedTank = tankLevelRepository.save(currentTank);
         
         // Record this as a restock if level increased, or usage if decreased
-        if (request.getCurrentLevel() > previousLevel) {
+        if (finalLevel > previousLevel) {
             TankRestockHistory history = new TankRestockHistory();
-            history.setAmountLiters(request.getCurrentLevel() - previousLevel);
+            history.setAmountLiters(finalLevel - previousLevel);
             history.setPreviousLevel(previousLevel);
-            history.setNewLevel(request.getCurrentLevel());
+            history.setNewLevel(finalLevel);
             history.setRestockedBy(updatedBy);
-            history.setNotes(request.getNotes() != null ? request.getNotes() : "Manual level adjustment");
+            history.setNotes(finalNotes);
             restockHistoryRepository.save(history);
         }
         
         activityLogger.log(updatedBy, "UPDATE_TANK_LEVEL", "TankLevel", updatedTank.getId(),
-            "Updated water level from " + previousLevel + "L to: " + request.getCurrentLevel() + "L");
+            "Updated water level from " + previousLevel + "L to: " + finalLevel + "L" + wasteNote);
         
-        log.info("Water level updated successfully to: {}L", request.getCurrentLevel());
+        log.info("Water level updated successfully to: {}L", finalLevel);
         return updatedTank;
     }
     
@@ -198,4 +261,15 @@ public class TankService {
             .status(tank.getStatus() != null ? tank.getStatus().getDisplayName() : "Good")
             .build();
     }
+    public Map<String, Object> getWasteInfo() {
+    TankLevel tank = getCurrentTankLevel();
+    Map<String, Object> wasteInfo = new HashMap<>();
+    wasteInfo.put("wastePercentage", 20);
+    wasteInfo.put("fullCapacity", tank.getTankCapacity());
+    wasteInfo.put("wasteAmountOnFull", (int) Math.round(tank.getTankCapacity() * 0.20));
+    wasteInfo.put("effectiveLevelWhenFull", tank.getTankCapacity() - (int) Math.round(tank.getTankCapacity() * 0.20));
+    wasteInfo.put("currentLevel", tank.getCurrentLevel());
+    wasteInfo.put("currentCapacity", tank.getTankCapacity());
+    return wasteInfo;
+}
 }

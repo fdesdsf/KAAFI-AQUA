@@ -20,6 +20,7 @@ import javax.servlet.http.HttpServletRequest;
 import javax.validation.Valid;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/tank")
@@ -106,6 +107,14 @@ public class TankController {
     public ResponseEntity<ApiResponse<List<TankRestockHistory>>> getRestockHistory() {
         List<TankRestockHistory> history = tankService.getRestockHistory();
         return ResponseEntity.ok(ApiResponse.success(history));
+    }
+    
+    // ADD THIS NEW ENDPOINT - Waste information
+    @GetMapping("/waste-info")
+    @PreAuthorize("hasAnyRole('ADMIN', 'STAFF')")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getWasteInfo() {
+        Map<String, Object> wasteInfo = tankService.getWasteInfo();
+        return ResponseEntity.ok(ApiResponse.success(wasteInfo));
     }
     
     private String getCurrentUser(HttpServletRequest request) {
