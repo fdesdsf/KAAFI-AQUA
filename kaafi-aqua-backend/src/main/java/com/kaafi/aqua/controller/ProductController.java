@@ -21,7 +21,7 @@ public class ProductController {
     
     // Product endpoints
     @GetMapping("/products")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'STAFF')")
     public ResponseEntity<ApiResponse<List<Product>>> getAllProducts() {
         List<Product> products = productService.getAllProducts();
         return ResponseEntity.ok(ApiResponse.success(products));
@@ -78,7 +78,7 @@ public class ProductController {
     
     // Category endpoints - FULL CRUD
     @GetMapping("/product-categories")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'STAFF')")
     public ResponseEntity<ApiResponse<List<ProductCategory>>> getAllCategories() {
         List<ProductCategory> categories = productService.getAllCategories();
         return ResponseEntity.ok(ApiResponse.success(categories));
@@ -106,7 +106,7 @@ public class ProductController {
     }
     
     @DeleteMapping("/product-categories/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasRole('ADMIN')") 
     public ResponseEntity<ApiResponse<Void>> deleteCategory(@PathVariable Long id) {
         productService.deleteCategory(id);
         return ResponseEntity.ok(ApiResponse.success("Category deleted successfully", null));

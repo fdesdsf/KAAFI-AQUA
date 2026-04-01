@@ -1,6 +1,7 @@
 package com.kaafi.aqua.service;
 
 import com.kaafi.aqua.dto.request.SaleRequest;
+import com.kaafi.aqua.dto.request.UpdateSaleRequest;
 import com.kaafi.aqua.dto.response.SaleResponse;
 import com.kaafi.aqua.model.Sale;
 import com.kaafi.aqua.model.TankLevel;
@@ -137,6 +138,84 @@ public class SaleService {
             " Method: " + request.getMethod() + " Amount: " + request.getAmount());
         
         return mapToSaleResponse(savedSale);
+    }
+    
+    /**
+     * Update an existing sale (Admin only)
+     */
+    @Transactional
+    public SaleResponse updateSale(Long id, UpdateSaleRequest request) {
+        log.info("Updating sale with id: {}", id);
+        
+        // Find existing sale
+        Sale sale = saleRepository.findById(id)
+            .orElseThrow(() -> new RuntimeException("Sale not found with id: " + id));
+        
+        // Update fields if they are provided in the request
+        if (request.getCustomer() != null && !request.getCustomer().isEmpty()) {
+            sale.setCustomer(request.getCustomer());
+            log.info("Updated customer to: {}", request.getCustomer());
+        }
+        
+        if (request.getAmount() != null) {
+            sale.setAmount(request.getAmount());
+            log.info("Updated amount to: {}", request.getAmount());
+        }
+        
+        if (request.getMethod() != null) {
+            sale.setMethod(request.getMethod());
+            log.info("Updated payment method to: {}", request.getMethod());
+        }
+        
+        if (request.getStatus() != null) {
+            sale.setStatus(request.getStatus());
+            log.info("Updated status to: {}", request.getStatus());
+        }
+        
+        if (request.getPaidAmount() != null) {
+            sale.setPaidAmount(request.getPaidAmount());
+            log.info("Updated paid amount to: {}", request.getPaidAmount());
+        }
+        
+        // Save the updated sale
+        Sale updatedSale = saleRepository.save(sale);
+        log.info("Sale updated successfully: {}", updatedSale.getId());
+        
+        return mapToSaleResponse(updatedSale);
+    }
+    
+    /**
+     * Delete a sale (Admin only)
+     */
+    @Transactional
+    public void deleteSale(Long id) {
+        log.info("Deleting sale with id: {}", id);
+        
+        // Find existing sale
+        Sale sale = saleRepository.findById(id)
+            .orElseThrow(() -> new RuntimeException("Sale not found with id: " + id));
+        
+        // If it was a pending credit sale, adjust customer credit balance
+        if (sale.getMethod() == PaymentMethod.CREDIT && sale.getStatus() == SaleStatus.PENDING) {
+            if (sale.getCustomerId() != null) {
+                Optional<Customer> customerOpt = customerRepository.findById(sale.getCustomerId());
+                if (customerOpt.isPresent()) {
+                    Customer customer = customerOpt.get();
+                    BigDecimal remainingAmount = sale.getAmount().subtract(sale.getPaidAmount());
+                    BigDecimal newBalance = customer.getCreditBalance().subtract(remainingAmount);
+                    if (newBalance.compareTo(BigDecimal.ZERO) < 0) {
+                        newBalance = BigDecimal.ZERO;
+                    }
+                    customer.setCreditBalance(newBalance);
+                    customerRepository.save(customer);
+                    log.info("Adjusted customer {} credit balance to: {}", customer.getName(), newBalance);
+                }
+            }
+        }
+        
+        // Delete the sale
+        saleRepository.delete(sale);
+        log.info("Sale deleted successfully: {}", id);
     }
     
     private void updateCustomerStats(Customer customer, BigDecimal amount, boolean isCredit) {
@@ -446,6 +525,9 @@ public class SaleService {
             response.setMethod(sale.getMethod());
             response.setStatus(sale.getStatus());
             response.setStaff(sale.getStaff());
+            response.setPaidAmount(sale.getPaidAmount());           // ✅ ADDED
+            response.setRemainingBalance(sale.getRemainingBalance()); // ✅ ADDED
+            response.setCustomerId(sale.getCustomerId());           // ✅ ADDED
             return response;
         } catch (Exception e) {
             log.error("Error mapping sale to response for sale id: {}", sale.getId(), e);

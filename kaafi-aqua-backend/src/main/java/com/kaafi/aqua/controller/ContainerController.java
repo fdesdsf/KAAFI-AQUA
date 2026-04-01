@@ -19,35 +19,35 @@ public class ContainerController {
     private final ContainerService containerService;
     
     @GetMapping("/containers")
-    @PreAuthorize("hasRole('ADMIN')")
+     @PreAuthorize("hasAnyRole('ADMIN', 'STAFF')")
     public ResponseEntity<ApiResponse<List<ContainerType>>> getAllContainers() {
         List<ContainerType> containers = containerService.getAllContainers();
         return ResponseEntity.ok(ApiResponse.success(containers));
     }
     
     @GetMapping("/containers/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+     @PreAuthorize("hasAnyRole('ADMIN', 'STAFF')") 
     public ResponseEntity<ApiResponse<ContainerType>> getContainerById(@PathVariable Long id) {
         ContainerType container = containerService.getContainerById(id);
         return ResponseEntity.ok(ApiResponse.success(container));
     }
     
     @GetMapping("/containers/active")
-    @PreAuthorize("hasRole('ADMIN')")
+     @PreAuthorize("hasAnyRole('ADMIN', 'STAFF')")
     public ResponseEntity<ApiResponse<List<ContainerType>>> getActiveContainers() {
         List<ContainerType> containers = containerService.getActiveContainers();
         return ResponseEntity.ok(ApiResponse.success(containers));
     }
     
     @GetMapping("/containers/type/{type}")
-    @PreAuthorize("hasRole('ADMIN')")
+     @PreAuthorize("hasAnyRole('ADMIN', 'STAFF')") 
     public ResponseEntity<ApiResponse<List<ContainerType>>> getContainersByType(@PathVariable String type) {
         List<ContainerType> containers = containerService.getContainersByType(type);
         return ResponseEntity.ok(ApiResponse.success(containers));
     }
     
     @GetMapping("/containers/search")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'STAFF')") 
     public ResponseEntity<ApiResponse<List<ContainerType>>> searchContainers(@RequestParam String keyword) {
         List<ContainerType> containers = containerService.searchContainers(keyword);
         return ResponseEntity.ok(ApiResponse.success(containers));

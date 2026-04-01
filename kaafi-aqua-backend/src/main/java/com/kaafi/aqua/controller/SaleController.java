@@ -1,6 +1,7 @@
 package com.kaafi.aqua.controller;
 
 import com.kaafi.aqua.dto.request.SaleRequest;
+import com.kaafi.aqua.dto.request.UpdateSaleRequest;
 import com.kaafi.aqua.dto.response.ApiResponse;
 import com.kaafi.aqua.dto.response.SaleResponse;
 import com.kaafi.aqua.service.SaleService;
@@ -37,17 +38,35 @@ public class SaleController {
         return ResponseEntity.ok(ApiResponse.success("Sale completed successfully", sale));
     }
     
-    // ADD THIS METHOD - Handles GET /api/sales
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'STAFF')")
     public ResponseEntity<ApiResponse<List<SaleResponse>>> getAllSales() {
         log.info("Fetching all sales for the last 30 days");
-        // Get sales from the last 30 days by default
         List<SaleResponse> sales = saleService.getSalesBetweenDates(
             LocalDate.now().minusDays(30), 
             LocalDate.now()
         );
         return ResponseEntity.ok(ApiResponse.success("Sales fetched successfully", sales));
+    }
+    
+    // ✅ UPDATED - Update sale (Admin only) - Changed from /admin/sales/{id} to /admin/{id}
+    @PutMapping("/admin/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse<SaleResponse>> updateSale(
+            @PathVariable Long id,
+            @Valid @RequestBody UpdateSaleRequest request) {
+        log.info("Updating sale with id: {}", id);
+        SaleResponse updatedSale = saleService.updateSale(id, request);
+        return ResponseEntity.ok(ApiResponse.success("Sale updated successfully", updatedSale));
+    }
+    
+    // ✅ UPDATED - Delete sale (Admin only) - Changed from /admin/sales/{id} to /admin/{id}
+    @DeleteMapping("/admin/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse<Void>> deleteSale(@PathVariable Long id) {
+        log.info("Deleting sale with id: {}", id);
+        saleService.deleteSale(id);
+        return ResponseEntity.ok(ApiResponse.success("Sale deleted successfully", null));
     }
     
     @GetMapping("/today")

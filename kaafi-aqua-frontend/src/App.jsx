@@ -343,6 +343,13 @@ function App() {
                 </Layout>
               </ProtectedRoute>
             } />
+            <Route path="/staff/customer-engagement" element={
+               <ProtectedRoute requiredRole="STAFF">
+                 <Layout userRole="STAFF">
+                   <CustomerEngagement />
+                </Layout>
+                </ProtectedRoute>
+            } />
             
             
             {/* Default Route */}

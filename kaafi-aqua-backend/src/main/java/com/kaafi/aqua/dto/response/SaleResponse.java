@@ -20,4 +20,7 @@ public class SaleResponse {
     private PaymentMethod method;
     private SaleStatus status;
     private String staff;
+    private BigDecimal paidAmount;           // ✅ ADD THIS
+    private BigDecimal remainingBalance;     // ✅ ADD THIS
+    private Long customerId;
 }
