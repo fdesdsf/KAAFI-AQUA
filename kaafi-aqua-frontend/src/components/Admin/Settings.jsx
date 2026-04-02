@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Package, Box, Droplets, Settings as SettingsIcon, FolderTree, Plus, Edit, Trash2, Search, X, Save, DollarSign } from 'lucide-react';
+import { Package, Box, Droplets, Settings as SettingsIcon, FolderTree, Filter, Plus, Edit, Trash2, Search, X, Save, DollarSign } from 'lucide-react';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
 
@@ -9,6 +9,7 @@ import ContainersManagement from './SettingsTabs/ContainersManagement';
 import TankSettings from './SettingsTabs/TankSettings';
 import SystemSettings from './SettingsTabs/SystemSettings';
 import CategoriesManagement from './SettingsTabs/CategoriesManagement';
+import FiltersManagement from './SettingsTabs/FiltersManagement';
 
 const Settings = () => {
   const [activeTab, setActiveTab] = useState('products');
@@ -17,6 +18,7 @@ const Settings = () => {
     { id: 'products', name: 'Products', icon: Package },
     { id: 'categories', name: 'Categories', icon: FolderTree }, 
     { id: 'containers', name: 'Containers', icon: Box },
+    { id: 'filters', name: 'Filters', icon: Filter },
     { id: 'tank', name: 'Tank', icon: Droplets },
     { id: 'system', name: 'System', icon: SettingsIcon },
   ];
@@ -56,6 +58,7 @@ const Settings = () => {
         {activeTab === 'products' && <ProductsManagement />}
         {activeTab === 'categories' && <CategoriesManagement />}
         {activeTab === 'containers' && <ContainersManagement />}
+        {activeTab === 'filters' && <FiltersManagement />}
         {activeTab === 'tank' && <TankSettings />}
         {activeTab === 'system' && <SystemSettings />}
       </div>

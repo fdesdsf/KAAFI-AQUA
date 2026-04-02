@@ -179,12 +179,16 @@ public class FilterService {
     }
     
     @Transactional
-    public FilterMaintenanceLog addMaintenanceLog(String filterName, String action, String technician, String notes, String performedBy) {
+    public FilterMaintenanceLog addMaintenanceLog(String filterName, String action, String technician, String maintenanceDate, String notes, String performedBy) {
         FilterMaintenanceLog maintenanceLog = new FilterMaintenanceLog();
         maintenanceLog.setFilterName(filterName);
         maintenanceLog.setAction(action);
         maintenanceLog.setTechnician(technician);
-        maintenanceLog.setMaintenanceDate(LocalDate.now());
+        if (maintenanceDate != null && !maintenanceDate.isEmpty()) {
+            maintenanceLog.setMaintenanceDate(LocalDate.parse(maintenanceDate));
+        } else {
+            maintenanceLog.setMaintenanceDate(LocalDate.now());
+        }
         maintenanceLog.setNotes(notes);
         
         FilterMaintenanceLog savedLog = maintenanceLogRepository.save(maintenanceLog);
@@ -215,5 +219,84 @@ public class FilterService {
     
     public List<FilterMaintenanceLog> getMaintenanceLogsByFilter(String filterName) {
         return maintenanceLogRepository.findByFilterNameOrderByMaintenanceDateDesc(filterName);
+    }
+    
+    // ========== NEW ADMIN CRUD METHODS ==========
+    
+    @Transactional
+    public Filter createFilter(Filter filter) {
+        // Set default values if not provided
+        if (filter.getLastChanged() == null) {
+            filter.setLastChanged(LocalDate.now());
+        }
+        if (filter.getPercentage() == null) {
+            filter.setPercentage(100);
+        }
+        if (filter.getStatus() == null) {
+            filter.setStatus(FilterStatus.GOOD);
+        }
+        if (filter.getActive() == null) {
+            filter.setActive(true);
+        }
+        
+        Filter savedFilter = filterRepository.save(filter);
+        activityLogger.log("SYSTEM", "CREATE_FILTER", "Filter", savedFilter.getId(), 
+            "Created new filter: " + savedFilter.getName());
+        log.info("Created new filter: {} with ID: {}", savedFilter.getName(), savedFilter.getId());
+        return savedFilter;
+    }
+    
+    @Transactional
+    public Filter updateFilter(Long id, Filter filterDetails) {
+        Filter existingFilter = getFilterById(id);
+        
+        // Update only non-null fields
+        if (filterDetails.getName() != null) {
+            existingFilter.setName(filterDetails.getName());
+        }
+        if (filterDetails.getType() != null) {
+            existingFilter.setType(filterDetails.getType());
+        }
+        if (filterDetails.getLifespan() != null) {
+            existingFilter.setLifespan(filterDetails.getLifespan());
+        }
+        if (filterDetails.getDescription() != null) {
+            existingFilter.setDescription(filterDetails.getDescription());
+        }
+        
+        Filter updatedFilter = filterRepository.save(existingFilter);
+        activityLogger.log("SYSTEM", "UPDATE_FILTER", "Filter", id, 
+            "Updated filter: " + updatedFilter.getName());
+        log.info("Updated filter with ID: {}", id);
+        return updatedFilter;
+    }
+    
+    @Transactional
+    public void deleteFilter(Long id) {
+        Filter filter = getFilterById(id);
+        String filterName = filter.getName();
+        filterRepository.delete(filter);
+        activityLogger.log("SYSTEM", "DELETE_FILTER", "Filter", id, 
+            "Deleted filter: " + filterName);
+        log.info("Deleted filter: {} with ID: {}", filterName, id);
+    }
+    
+    @Transactional
+    public Filter toggleFilterStatus(Long id) {
+        Filter filter = getFilterById(id);
+        
+        // Toggle between ACTIVE and INACTIVE
+        if (filter.getActive() == null || filter.getActive()) {
+            filter.setActive(false);
+            log.info("Deactivated filter: {}", filter.getName());
+        } else {
+            filter.setActive(true);
+            log.info("Activated filter: {}", filter.getName());
+        }
+        
+        Filter updatedFilter = filterRepository.save(filter);
+        activityLogger.log("SYSTEM", "TOGGLE_FILTER_STATUS", "Filter", id, 
+            "Toggled filter status for: " + filter.getName() + " to active: " + filter.getActive());
+        return updatedFilter;
     }
 }

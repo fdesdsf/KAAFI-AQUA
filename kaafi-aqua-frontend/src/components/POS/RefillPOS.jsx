@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { Droplets, CreditCard, DollarSign, User, Users, Search, Phone, Package, Truck, ShoppingCart, Plus, Minus } from 'lucide-react';
+import { Droplets, CreditCard, DollarSign, Phone, Package, Truck, ShoppingCart, Plus, Minus } from 'lucide-react';
 import { useSales } from '../../context/SalesContext';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../services/api';
@@ -16,10 +16,6 @@ const RefillPOS = () => {
   const [cart, setCart] = useState([]);
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
-  const [customerId, setCustomerId] = useState(null);
-  const [existingCustomers, setExistingCustomers] = useState([]);
-  const [showCustomerSearch, setShowCustomerSearch] = useState(false);
-  const [searchCustomerTerm, setSearchCustomerTerm] = useState('');
   const [processing, setProcessing] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState('CASH');
   
@@ -45,7 +41,6 @@ const RefillPOS = () => {
     fetchProducts();
     fetchCategories();
     fetchContainers();
-    fetchCustomers();
   }, []);
 
   // Reset selections when sale type changes
@@ -87,15 +82,6 @@ const RefillPOS = () => {
     } catch (error) {
       console.error('Failed to fetch containers:', error);
       toast.error('Failed to load containers');
-    }
-  };
-
-  const fetchCustomers = async () => {
-    try {
-      const response = await api.get('/customers');
-      setExistingCustomers(response.data.data || []);
-    } catch (error) {
-      console.error('Failed to fetch customers:', error);
     }
   };
 
@@ -176,23 +162,6 @@ const RefillPOS = () => {
     return cart.reduce((sum, item) => sum + item.subtotal, 0);
   };
 
-  const selectCustomer = (customer) => {
-  console.log('✅ Customer selected:', customer);
-  console.log('✅ Setting customerId to:', customer.id);
-  setCustomerName(customer.name);
-  setCustomerPhone(customer.phone || '');
-  setCustomerId(customer.id);  // This must be set
-  setShowCustomerSearch(false);
-  setSearchCustomerTerm('');
-  toast.success(`Customer selected: ${customer.name}`);
-};
-
-  const clearCustomer = () => {
-    setCustomerName('');
-    setCustomerPhone('');
-    setCustomerId(null);
-  };
-
   const getSaleTypeId = (code) => {
     const types = {
       'RETAIL_REFILL': 1,
@@ -204,67 +173,60 @@ const RefillPOS = () => {
   };
 
   const handleCheckout = async () => {
-  if (cart.length === 0) {
-    toast.error('Cart is empty');
-    return;
-  }
-  
-  if (!customerName.trim()) {
-    toast.error('Please enter customer name');
-    return;
-  }
-  
-  if (paymentMethod === 'CREDIT' && !customerPhone.trim()) {
-    toast.error('Phone number is required for credit sales');
-    return;
-  }
-  
-  setProcessing(true);
-  
-  try {
-    for (const item of cart) {
-      const saleData = {
-        date: new Date().toISOString().split('T')[0],
-        time: new Date().toTimeString().split(' ')[0],
-        customer: customerName,
-        customerPhone: customerPhone,
-        customerId: customerId,  // ← ADD THIS - the customer ID from state
-        size: item.product.size,
-        quantity: item.quantity,
-        amount: item.subtotal,
-        method: paymentMethod,
-        status: 'COMPLETED',
-        staff: user?.name || 'Staff',
-        saleTypeId: getSaleTypeId(item.saleType),
-        productId: item.product.id,
-        containerId: item.container?.id || null,
-        containerCharge: item.container?.price || 0
-      };
-      
-      console.log('📤 Sending sale data with customerId:', saleData);
-      await addSale(saleData);
+    if (cart.length === 0) {
+      toast.error('Cart is empty');
+      return;
     }
     
-    toast.success(`Sale complete! Total: KES ${calculateCartTotal()}`);
-    setCart([]);
-    setCustomerName('');
-    setCustomerPhone('');
-    setCustomerId(null);
-    setPaymentMethod('CASH');
-    await refreshSales();
-    fetchCustomers();
-  } catch (error) {
-    console.error('Checkout failed:', error);
-    toast.error('Failed to process sale');
-  } finally {
-    setProcessing(false);
-  }
-};
-
-  const filteredCustomers = existingCustomers.filter(customer => 
-    customer.name?.toLowerCase().includes(searchCustomerTerm.toLowerCase()) ||
-    customer.phone?.toLowerCase().includes(searchCustomerTerm.toLowerCase())
-  );
+    if (!customerName.trim()) {
+      toast.error('Please enter customer name');
+      return;
+    }
+    
+    if (paymentMethod === 'CREDIT' && !customerPhone.trim()) {
+      toast.error('Phone number is required for credit sales');
+      return;
+    }
+    
+    setProcessing(true);
+    
+    try {
+      for (const item of cart) {
+        const saleData = {
+          date: new Date().toISOString().split('T')[0],
+          time: new Date().toTimeString().split(' ')[0],
+          customer: customerName,
+          customerPhone: customerPhone,
+          customerId: null,  // Let backend handle customer matching by phone
+          size: item.product.size,
+          quantity: item.quantity,
+          amount: item.subtotal,
+          method: paymentMethod,
+          status: 'COMPLETED',
+          staff: user?.name || 'Staff',
+          saleTypeId: getSaleTypeId(item.saleType),
+          productId: item.product.id,
+          containerId: item.container?.id || null,
+          containerCharge: item.container?.price || 0
+        };
+        
+        console.log('📤 Sending sale data:', saleData);
+        await addSale(saleData);
+      }
+      
+      toast.success(`Sale complete! Total: KES ${calculateCartTotal()}`);
+      setCart([]);
+      setCustomerName('');
+      setCustomerPhone('');
+      setPaymentMethod('CASH');
+      await refreshSales();
+    } catch (error) {
+      console.error('Checkout failed:', error);
+      toast.error('Failed to process sale');
+    } finally {
+      setProcessing(false);
+    }
+  };
 
   const currentProducts = getProductsByCategory();
   const availableContainers = containers;
@@ -447,49 +409,11 @@ const RefillPOS = () => {
 
         {/* Right Column - Cart & Payment */}
         <div className="space-y-6">
-          {/* Customer Section */}
+          {/* Customer Section - Simplified without Find Existing button */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-            <div className="flex justify-between items-center mb-3">
-              <label className="block text-sm font-medium text-gray-700">Customer Name *</label>
-              <button
-                type="button"
-                onClick={() => setShowCustomerSearch(!showCustomerSearch)}
-                className="text-xs text-blue-600 hover:text-blue-700 flex items-center"
-              >
-                <Users className="w-3 h-3 mr-1" />
-                {showCustomerSearch ? 'Hide Search' : 'Find Existing'}
-              </button>
-            </div>
-            
-            {showCustomerSearch && (
-              <div className="mb-3">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                  <input
-                    type="text"
-                    placeholder="Search by name or phone..."
-                    value={searchCustomerTerm}
-                    onChange={(e) => setSearchCustomerTerm(e.target.value)}
-                    className="pl-9 w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                  />
-                </div>
-                {searchCustomerTerm && filteredCustomers.length > 0 && (
-                  <div className="mt-2 border border-gray-200 rounded-lg max-h-40 overflow-y-auto">
-                    {filteredCustomers.slice(0, 5).map(customer => (
-                      <button
-                        key={customer.id}
-                        onClick={() => selectCustomer(customer)}
-                        className="w-full text-left px-3 py-2 hover:bg-gray-50 border-b last:border-b-0"
-                      >
-                        <p className="text-sm font-medium">{customer.name}</p>
-                        <p className="text-xs text-gray-500">{customer.phone || 'No phone'}</p>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-            
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Customer Name *
+            </label>
             <input
               type="text"
               value={customerName}
@@ -501,7 +425,9 @@ const RefillPOS = () => {
             
             {paymentMethod === 'CREDIT' && (
               <div className="mt-3">
-                <label className="block text-sm font-medium text-gray-700 mb-2">Phone Number *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Phone Number *
+                </label>
                 <div className="relative">
                   <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                   <input
@@ -512,16 +438,9 @@ const RefillPOS = () => {
                     placeholder="Enter customer phone number"
                   />
                 </div>
-                <p className="text-xs text-orange-600 mt-1">Required for credit sales</p>
-              </div>
-            )}
-            
-            {customerId && (
-              <div className="mt-2 flex justify-between items-center">
-                <p className="text-xs text-green-600">✓ Existing customer</p>
-                <button onClick={clearCustomer} className="text-xs text-red-500 hover:text-red-600">
-                  Clear
-                </button>
+                <p className="text-xs text-orange-600 mt-1">
+                  Required for credit sales - customer will be found/created by phone
+                </p>
               </div>
             )}
           </div>

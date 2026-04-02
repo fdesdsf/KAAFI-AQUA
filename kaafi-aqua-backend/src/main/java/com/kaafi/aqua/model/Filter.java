@@ -33,6 +33,12 @@ public class Filter {
     @Column(nullable = false, length = 50)
     private String type;
     
+    @Column(length = 500)
+    private String description;
+    
+    @Column(name = "is_active")
+    private Boolean isActive = true;
+    
     @Column(name = "created_at")
     private LocalDateTime createdAt;
     
@@ -61,6 +67,16 @@ public class Filter {
     public String getType() { return type; }
     public void setType(String type) { this.type = type; }
     
+    public String getDescription() { return description; }
+    public void setDescription(String description) { this.description = description; }
+    
+    public Boolean getIsActive() { return isActive; }
+    public void setIsActive(Boolean isActive) { this.isActive = isActive; }
+    
+    // Alias methods for compatibility with FilterService that uses getActive/setActive
+    public Boolean getActive() { return isActive; }
+    public void setActive(Boolean active) { this.isActive = active; }
+    
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
     
@@ -73,6 +89,9 @@ public class Filter {
         updatedAt = LocalDateTime.now();
         if (status == null) {
             status = FilterStatus.GOOD;
+        }
+        if (isActive == null) {
+            isActive = true;
         }
     }
     

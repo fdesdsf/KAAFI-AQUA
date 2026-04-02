@@ -24,6 +24,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -49,8 +50,8 @@ public class SaleService {
         
         // Create sale
         Sale sale = new Sale();
-        sale.setDate(LocalDate.now());
-        sale.setTime(LocalTime.now());
+        sale.setDate(LocalDate.now(ZoneId.of("Africa/Nairobi")));
+        sale.setTime(LocalTime.now(ZoneId.of("Africa/Nairobi")));
         sale.setCustomer(request.getCustomer());
         sale.setSize(request.getSize());
         sale.setQuantity(request.getQuantity());

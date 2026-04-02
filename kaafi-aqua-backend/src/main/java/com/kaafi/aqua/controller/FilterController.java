@@ -23,6 +23,7 @@ public class FilterController {
     private final FilterService filterService;
     private final JwtTokenProvider tokenProvider;
     
+    // Existing endpoints (these work)
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'STAFF')")
     public ResponseEntity<ApiResponse<List<Filter>>> getAllFilters() {
@@ -83,10 +84,11 @@ public class FilterController {
             @RequestParam String filterName,
             @RequestParam String action,
             @RequestParam String technician,
+            @RequestParam(required = false) String maintenanceDate,
             @RequestParam(required = false) String notes,
             HttpServletRequest httpRequest) {
         String performedBy = getCurrentUser(httpRequest);
-        FilterMaintenanceLog log = filterService.addMaintenanceLog(filterName, action, technician, notes, performedBy);
+        FilterMaintenanceLog log = filterService.addMaintenanceLog(filterName, action, technician, maintenanceDate, notes, performedBy);
         return ResponseEntity.ok(ApiResponse.success("Maintenance log added successfully", log));
     }
     
@@ -102,6 +104,39 @@ public class FilterController {
     public ResponseEntity<ApiResponse<List<FilterMaintenanceLog>>> getMaintenanceLogsByFilter(@PathVariable String filterName) {
         List<FilterMaintenanceLog> logs = filterService.getMaintenanceLogsByFilter(filterName);
         return ResponseEntity.ok(ApiResponse.success(logs));
+    }
+    
+    // ========== NEW ADMIN CRUD ENDPOINTS ==========
+    // Note: These are at /filters/admin/filters (not /admin/filters)
+    
+    @PostMapping("/admin/filters")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse<Filter>> createFilter(@RequestBody Filter filter) {
+        Filter createdFilter = filterService.createFilter(filter);
+        return ResponseEntity.ok(ApiResponse.success("Filter created successfully", createdFilter));
+    }
+    
+    @PutMapping("/admin/filters/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse<Filter>> updateFilter(
+            @PathVariable Long id,
+            @RequestBody Filter filter) {
+        Filter updatedFilter = filterService.updateFilter(id, filter);
+        return ResponseEntity.ok(ApiResponse.success("Filter updated successfully", updatedFilter));
+    }
+    
+    @DeleteMapping("/admin/filters/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse<Void>> deleteFilter(@PathVariable Long id) {
+        filterService.deleteFilter(id);
+        return ResponseEntity.ok(ApiResponse.success("Filter deleted successfully", null));
+    }
+    
+    @PatchMapping("/admin/filters/{id}/toggle-status")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse<Filter>> toggleFilterStatus(@PathVariable Long id) {
+        Filter updatedFilter = filterService.toggleFilterStatus(id);
+        return ResponseEntity.ok(ApiResponse.success("Filter status updated successfully", updatedFilter));
     }
     
     private String getCurrentUser(HttpServletRequest request) {

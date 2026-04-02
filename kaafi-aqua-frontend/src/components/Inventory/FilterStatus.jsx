@@ -1,22 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { Droplets, AlertTriangle, CheckCircle, RefreshCw, Filter, Activity, Plus, Edit, Calendar } from 'lucide-react';
+import { Droplets, AlertTriangle, CheckCircle, RefreshCw, Filter, Activity, Plus, Edit, Calendar, Search, X } from 'lucide-react';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
 
 const FilterStatus = () => {
   const [filters, setFilters] = useState([]);
   const [maintenanceLog, setMaintenanceLog] = useState([]);
+  const [filteredLogs, setFilteredLogs] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showMaintenanceModal, setShowMaintenanceModal] = useState(false);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [selectedFilter, setSelectedFilter] = useState(null);
   const [submitting, setSubmitting] = useState(false);
-  const [maintenanceData, setMaintenanceData] = useState({
-    filterName: '',
-    action: '',
-    technician: '',
-    notes: ''
-  });
   const [updateData, setUpdateData] = useState({
     status: '',
     percentage: 100,
@@ -25,6 +19,14 @@ const FilterStatus = () => {
     maintenanceDate: new Date().toISOString().split('T')[0],
     notes: ''
   });
+  
+  // Filter states for maintenance log
+  const [logFilters, setLogFilters] = useState({
+    filterName: '',
+    startDate: '',
+    endDate: ''
+  });
+  const [showFilters, setShowFilters] = useState(false);
   
   const [stats, setStats] = useState({
     totalFilters: 0,
@@ -38,6 +40,10 @@ const FilterStatus = () => {
     fetchFilters();
     fetchMaintenanceLogs();
   }, []);
+
+  useEffect(() => {
+    applyFilters();
+  }, [maintenanceLog, logFilters]);
 
   const fetchFilters = async () => {
     try {
@@ -67,11 +73,44 @@ const FilterStatus = () => {
     try {
       const response = await api.get('/filters/maintenance-logs');
       setMaintenanceLog(response.data.data);
+      setFilteredLogs(response.data.data);
     } catch (error) {
       console.error('Failed to fetch maintenance logs:', error);
     } finally {
       setLoading(false);
     }
+  };
+
+  const applyFilters = () => {
+    let filtered = [...maintenanceLog];
+    
+    // Filter by filter name
+    if (logFilters.filterName) {
+      filtered = filtered.filter(log => 
+        log.filterName?.toLowerCase().includes(logFilters.filterName.toLowerCase())
+      );
+    }
+    
+    // Filter by start date
+    if (logFilters.startDate) {
+      filtered = filtered.filter(log => log.maintenanceDate >= logFilters.startDate);
+    }
+    
+    // Filter by end date
+    if (logFilters.endDate) {
+      filtered = filtered.filter(log => log.maintenanceDate <= logFilters.endDate);
+    }
+    
+    setFilteredLogs(filtered);
+  };
+
+  const clearFilters = () => {
+    setLogFilters({
+      filterName: '',
+      startDate: '',
+      endDate: ''
+    });
+    setFilteredLogs(maintenanceLog);
   };
 
   // Calculate status based on percentage
@@ -91,39 +130,6 @@ const FilterStatus = () => {
     });
   };
 
-  const handleAddMaintenance = async (e) => {
-    e.preventDefault();
-    
-    if (!maintenanceData.filterName || !maintenanceData.action || !maintenanceData.technician) {
-      toast.error('Please fill all required fields');
-      return;
-    }
-    
-    setSubmitting(true);
-    
-    try {
-      await api.post('/filters/maintenance-log', null, {
-        params: {
-          filterName: maintenanceData.filterName,
-          action: maintenanceData.action,
-          technician: maintenanceData.technician,
-          notes: maintenanceData.notes
-        }
-      });
-      
-      toast.success('Maintenance log added successfully!');
-      setShowMaintenanceModal(false);
-      setMaintenanceData({ filterName: '', action: '', technician: '', notes: '' });
-      fetchMaintenanceLogs();
-      
-    } catch (error) {
-      console.error('Failed to add maintenance log:', error);
-      toast.error(error.response?.data?.message || 'Failed to add maintenance log');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
   const handleUpdateFilter = async (e) => {
     e.preventDefault();
     setSubmitting(true);
@@ -138,13 +144,14 @@ const FilterStatus = () => {
         }
       });
       
-      // Add maintenance log if action and technician are provided
+      // Add maintenance log with the SELECTED DATE
       if (updateData.action && updateData.technician) {
         await api.post('/filters/maintenance-log', null, {
           params: {
             filterName: selectedFilter.name,
             action: updateData.action,
             technician: updateData.technician,
+            maintenanceDate: updateData.maintenanceDate,
             notes: updateData.notes || `Filter updated. New status: ${getDisplayStatus(updateData.status)}, New percentage: ${updateData.percentage}%`
           }
         });
@@ -161,8 +168,8 @@ const FilterStatus = () => {
         maintenanceDate: new Date().toISOString().split('T')[0],
         notes: ''
       });
-      fetchFilters(); // Refresh the list
-      fetchMaintenanceLogs(); // Refresh maintenance logs
+      fetchFilters();
+      fetchMaintenanceLogs();
       
     } catch (error) {
       console.error('Failed to update filter:', error);
@@ -209,11 +216,6 @@ const FilterStatus = () => {
     return 'bg-red-500';
   };
 
-  const getStatusIcon = (status) => {
-    if (status === 'GOOD') return <CheckCircle className="w-5 h-5" />;
-    return <AlertTriangle className="w-5 h-5" />;
-  };
-
   if (loading) {
     return (
       <div className="p-6 flex justify-center items-center min-h-[400px]">
@@ -224,18 +226,11 @@ const FilterStatus = () => {
 
   return (
     <div className="p-6">
-      <div className="mb-8 flex justify-between items-center">
+      <div className="mb-8">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Filter Status</h1>
           <p className="text-gray-600 mt-1">Monitor and manage water filtration system</p>
         </div>
-        <button
-          onClick={() => setShowMaintenanceModal(true)}
-          className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Maintenance</span>
-        </button>
       </div>
 
       {/* Stats Cards */}
@@ -276,27 +271,32 @@ const FilterStatus = () => {
         </div>
       </div>
 
-      {/* Filters Grid - Made clickable */}
+      {/* Filters Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         {filters.map((filter) => (
           <div 
             key={filter.id} 
-            onClick={() => openUpdateModal(filter)}
-            className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 cursor-pointer hover:shadow-md transition-all hover:border-blue-300"
+            className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-all"
           >
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center space-x-3">
                 <Droplets className="w-6 h-6 text-blue-500" />
                 <div>
                   <h3 className="font-semibold text-gray-900">{filter.name}</h3>
-                  <p className="text-xs text-gray-500 capitalize">{filter.type}</p>
+                  <p className="text-xs text-gray-500 capitalize">{filter.type || 'Standard Filter'}</p>
                 </div>
               </div>
               <div className="flex items-center space-x-2">
                 <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(filter.status)}`}>
                   {getDisplayStatus(filter.status)}
                 </span>
-                <Edit className="w-4 h-4 text-gray-400 hover:text-blue-500" />
+                <button
+                  onClick={() => openUpdateModal(filter)}
+                  className="p-1 text-gray-400 hover:text-blue-500 transition-colors"
+                  title="Update Filter"
+                >
+                  <Edit className="w-4 h-4" />
+                </button>
               </div>
             </div>
             
@@ -336,11 +336,70 @@ const FilterStatus = () => {
         ))}
       </div>
 
-      {/* Maintenance Log */}
+      {/* Maintenance Log with Filters */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-100">
+        <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center">
           <h2 className="text-lg font-semibold text-gray-900">Recent Maintenance Log</h2>
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className="flex items-center space-x-2 px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+          >
+            <Filter className="w-4 h-4" />
+            <span>{showFilters ? 'Hide Filters' : 'Show Filters'}</span>
+          </button>
         </div>
+        
+        {/* Filter Bar */}
+        {showFilters && (
+          <div className="px-6 py-4 bg-gray-50 border-b border-gray-100">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Filter Name</label>
+                <select
+                  value={logFilters.filterName}
+                  onChange={(e) => setLogFilters({...logFilters, filterName: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
+                >
+                  <option value="">All Filters</option>
+                  {filters.map(filter => (
+                    <option key={filter.id} value={filter.name}>{filter.name}</option>
+                  ))}
+                </select>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
+                <input
+                  type="date"
+                  value={logFilters.startDate}
+                  onChange={(e) => setLogFilters({...logFilters, startDate: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">End Date</label>
+                <input
+                  type="date"
+                  value={logFilters.endDate}
+                  onChange={(e) => setLogFilters({...logFilters, endDate: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
+                />
+              </div>
+              
+              <div className="flex items-end">
+                <button
+                  onClick={clearFilters}
+                  className="w-full px-3 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors text-sm flex items-center justify-center space-x-1"
+                >
+                  <X className="w-4 h-4" />
+                  <span>Clear Filters</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gray-50">
@@ -350,11 +409,11 @@ const FilterStatus = () => {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Technician</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Notes</th>
-                </tr>
+              </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {maintenanceLog.length > 0 ? (
-                maintenanceLog.map((log) => (
+              {filteredLogs.length > 0 ? (
+                filteredLogs.map((log) => (
                   <tr key={log.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 text-sm text-gray-900">{log.maintenanceDate}</td>
                     <td className="px-6 py-4 text-sm text-gray-900">{log.filterName}</td>
@@ -366,8 +425,8 @@ const FilterStatus = () => {
               ) : (
                 <tr>
                   <td colSpan="5" className="text-center py-12 text-gray-500">
-                    No maintenance logs available
-                  </td>
+                    No maintenance logs found matching the filters
+                   </td>
                 </tr>
               )}
             </tbody>
@@ -375,96 +434,7 @@ const FilterStatus = () => {
         </div>
       </div>
 
-      {/* Add Maintenance Modal */}
-      {showMaintenanceModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center p-6 border-b border-gray-100">
-              <h2 className="text-xl font-semibold text-gray-900">Add Maintenance Log</h2>
-              <button onClick={() => setShowMaintenanceModal(false)} className="text-gray-400 hover:text-gray-600">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-            
-            <form onSubmit={handleAddMaintenance} className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Filter Name *</label>
-                <select
-                  required
-                  value={maintenanceData.filterName}
-                  onChange={(e) => setMaintenanceData({...maintenanceData, filterName: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">Select Filter</option>
-                  {filters.map(filter => (
-                    <option key={filter.id} value={filter.name}>{filter.name}</option>
-                  ))}
-                </select>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Action *</label>
-                <select
-                  required
-                  value={maintenanceData.action}
-                  onChange={(e) => setMaintenanceData({...maintenanceData, action: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">Select Action</option>
-                  <option value="Replaced">Replaced</option>
-                  <option value="Cleaned">Cleaned</option>
-                  <option value="Inspected">Inspected</option>
-                  <option value="Repaired">Repaired</option>
-                </select>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Technician *</label>
-                <input
-                  type="text"
-                  required
-                  value={maintenanceData.technician}
-                  onChange={(e) => setMaintenanceData({...maintenanceData, technician: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                  placeholder="Enter technician name"
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
-                <textarea
-                  value={maintenanceData.notes}
-                  onChange={(e) => setMaintenanceData({...maintenanceData, notes: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                  rows="3"
-                  placeholder="Additional notes (optional)"
-                />
-              </div>
-              
-              <div className="flex justify-end space-x-3 pt-4">
-                <button
-                  type="button"
-                  onClick={() => setShowMaintenanceModal(false)}
-                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-                >
-                  {submitting ? 'Adding...' : 'Add Log'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Update Filter Modal with Auto Status Calculation */}
+      {/* Update Filter Modal */}
       {showUpdateModal && selectedFilter && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
@@ -530,16 +500,17 @@ const FilterStatus = () => {
               </div>
               
               <div className="border-t border-gray-200 pt-4 mt-2">
-                <h3 className="text-md font-medium text-gray-800 mb-3">Maintenance Record (Optional)</h3>
+                <h3 className="text-md font-medium text-gray-800 mb-3">Maintenance Record</h3>
                 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Action</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Action *</label>
                   <select
+                    required
                     value={updateData.action}
                     onChange={(e) => setUpdateData({...updateData, action: e.target.value})}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                   >
-                    <option value="">Select Action (optional)</option>
+                    <option value="">Select Action</option>
                     <option value="Replaced">Replaced</option>
                     <option value="Cleaned">Cleaned</option>
                     <option value="Inspected">Inspected</option>
@@ -548,27 +519,30 @@ const FilterStatus = () => {
                 </div>
                 
                 <div className="mt-3">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Technician</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Technician *</label>
                   <input
                     type="text"
+                    required
                     value={updateData.technician}
                     onChange={(e) => setUpdateData({...updateData, technician: e.target.value})}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                    placeholder="Enter technician name (optional)"
+                    placeholder="Enter technician name"
                   />
                 </div>
                 
                 <div className="mt-3">
                   <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center">
                     <Calendar className="w-4 h-4 mr-1" />
-                    Maintenance Date
+                    Maintenance Date *
                   </label>
                   <input
                     type="date"
+                    required
                     value={updateData.maintenanceDate}
                     onChange={(e) => setUpdateData({...updateData, maintenanceDate: e.target.value})}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                   />
+                  <p className="text-xs text-gray-500 mt-1">Select the date when maintenance was performed</p>
                 </div>
               </div>
               
