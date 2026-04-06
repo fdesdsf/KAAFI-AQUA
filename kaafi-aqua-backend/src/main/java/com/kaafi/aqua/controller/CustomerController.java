@@ -242,4 +242,25 @@ public class CustomerController {
         
         return ResponseEntity.ok(ApiResponse.success(message, response));
     }
+
+    // Get all sales for a customer (both credit and cash)
+@GetMapping("/{customerId}/sales")
+@PreAuthorize("hasAnyRole('ADMIN', 'STAFF')")
+public ResponseEntity<ApiResponse<List<com.kaafi.aqua.dto.response.SaleResponse>>> getCustomerSales(
+        @PathVariable Long customerId) {
+    log.info("Fetching all sales for customer ID: {}", customerId);
+    List<com.kaafi.aqua.dto.response.SaleResponse> sales = saleService.getSalesByCustomerId(customerId);
+    return ResponseEntity.ok(ApiResponse.success(sales));
+}
+
+// Delete a specific sale from a customer (Admin only)
+@DeleteMapping("/{customerId}/sales/{saleId}")
+@PreAuthorize("hasRole('ADMIN')")
+public ResponseEntity<ApiResponse<Void>> deleteCustomerSale(
+        @PathVariable Long customerId,
+        @PathVariable Long saleId) {
+    log.info("Deleting sale {} for customer {}", saleId, customerId);
+    saleService.deleteSale(saleId);
+    return ResponseEntity.ok(ApiResponse.success("Sale deleted successfully", null));
+}
 }

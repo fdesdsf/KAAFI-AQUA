@@ -276,7 +276,7 @@ const RefillPOS = () => {
                   : 'bg-white border border-gray-300 text-gray-700'
               }`}
             >
-              Standard: KES 80 / 20L
+              Premium: KES 80 / 20L
             </button>
             <button
               onClick={() => setBulkPriceOption('premium')}
@@ -286,7 +286,7 @@ const RefillPOS = () => {
                   : 'bg-white border border-gray-300 text-gray-700'
               }`}
             >
-              Premium: KES 100 / 20L
+              Standard: KES 100 / 20L
             </button>
           </div>
         </div>

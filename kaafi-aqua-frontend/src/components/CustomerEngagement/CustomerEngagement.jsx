@@ -1,15 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { Phone, Mail, AlertTriangle, Users, DollarSign, Calendar, Search, RefreshCw, CreditCard, X, UserPlus } from 'lucide-react';
+import { Phone, Mail, AlertTriangle, Users, DollarSign, Calendar, Search, RefreshCw, CreditCard, X, UserPlus, Eye, Trash2 } from 'lucide-react';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
+import { useAuth } from '../../context/AuthContext';
 
 const CustomerEngagement = () => {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'ADMIN';
+  
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [showCreditModal, setShowCreditModal] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('CASH');
   const [processing, setProcessing] = useState(false);
   const [inactiveDays, setInactiveDays] = useState(15);
   const [showInactiveOnly, setShowInactiveOnly] = useState(false);
@@ -22,6 +27,9 @@ const CustomerEngagement = () => {
     email: ''
   });
   const [addingCustomer, setAddingCustomer] = useState(false);
+  const [showSalesModal, setShowSalesModal] = useState(false);
+  const [customerSales, setCustomerSales] = useState([]);
+  const [loadingSales, setLoadingSales] = useState(false);
 
   useEffect(() => {
     fetchCustomers();
@@ -46,6 +54,60 @@ const CustomerEngagement = () => {
     }
   };
 
+  const fetchCustomerSales = async (customer) => {
+    setLoadingSales(true);
+    setSelectedCustomer(customer);
+    try {
+      const response = await api.get(`/customers/${customer.id}/sales`);
+      setCustomerSales(response.data.data || []);
+      setShowSalesModal(true);
+    } catch (error) {
+      console.error('Failed to fetch customer sales:', error);
+      toast.error('Failed to load sales history');
+    } finally {
+      setLoadingSales(false);
+    }
+  };
+
+  const handleDeleteSale = async (saleId) => {
+    if (!window.confirm('Are you sure you want to delete this sale? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      await api.delete(`/customers/${selectedCustomer.id}/sales/${saleId}`);
+      toast.success('Sale deleted successfully');
+      const response = await api.get(`/customers/${selectedCustomer.id}/sales`);
+      setCustomerSales(response.data.data || []);
+      fetchCustomers();
+    } catch (error) {
+      console.error('Failed to delete sale:', error);
+      toast.error(error.response?.data?.message || 'Failed to delete sale');
+    }
+  };
+
+  // ✅ NEW: Delete Customer
+  const handleDeleteCustomer = async (customer) => {
+    // Check if customer has any sales
+    if (customer.totalRefills > 0) {
+      toast.error(`Cannot delete "${customer.name}" because they have ${customer.totalRefills} sale(s). Please delete all sales first.`);
+      return;
+    }
+    
+    if (!window.confirm(`Are you sure you want to delete customer "${customer.name}"? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      await api.delete(`/customers/${customer.id}`);
+      toast.success(`Customer "${customer.name}" deleted successfully`);
+      fetchCustomers();
+    } catch (error) {
+      console.error('Failed to delete customer:', error);
+      toast.error(error.response?.data?.message || 'Failed to delete customer');
+    }
+  };
+
   const handleFilterChange = (filter) => {
     setSelectedFilter(filter);
     setShowInactiveOnly(filter === 'inactive');
@@ -64,6 +126,7 @@ const CustomerEngagement = () => {
   const openCreditModal = (customer) => {
     setSelectedCustomer(customer);
     setPaymentAmount('');
+    setPaymentMethod('CASH');
     setShowCreditModal(true);
   };
 
@@ -81,8 +144,11 @@ const CustomerEngagement = () => {
 
     setProcessing(true);
     try {
-      await api.post(`/customers/${selectedCustomer.id}/pay-credit`, { amount });
-      toast.success(`Payment of KES ${amount} recorded successfully`);
+      await api.post(`/customers/${selectedCustomer.id}/pay-credit`, { 
+        amount: amount,
+        paymentMethod: paymentMethod
+      });
+      toast.success(`Payment of KES ${amount} recorded successfully via ${paymentMethod === 'CASH' ? 'Cash' : 'M-Pesa'}`);
       setShowCreditModal(false);
       fetchCustomers();
     } catch (error) {
@@ -101,7 +167,7 @@ const CustomerEngagement = () => {
 
     setAddingCustomer(true);
     try {
-      const response = await api.post('/customers', {
+      await api.post('/customers', {
         name: newCustomer.name,
         phone: newCustomer.phone,
         email: newCustomer.email,
@@ -135,6 +201,13 @@ const CustomerEngagement = () => {
     const diffTime = Math.abs(today - lastDate);
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     return diffDays;
+  };
+
+  const formatMethod = (method) => {
+    if (method === 'CASH') return 'Cash';
+    if (method === 'M_PESA') return 'M-Pesa';
+    if (method === 'CREDIT') return 'Credit';
+    return method;
   };
 
   if (loading) {
@@ -279,7 +352,7 @@ const CustomerEngagement = () => {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Credit Balance</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Purchase</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                </tr>
+              </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {filteredCustomers.length > 0 ? (
@@ -299,7 +372,7 @@ const CustomerEngagement = () => {
                             </p>
                           )}
                         </div>
-                       </td>
+                      </td>
                       <td className="px-6 py-4">
                         <div>
                           <p className="text-sm text-gray-900 flex items-center">
@@ -313,20 +386,20 @@ const CustomerEngagement = () => {
                             </p>
                           )}
                         </div>
-                       </td>
+                      </td>
                       <td className="px-6 py-4 text-sm text-gray-900">{customer.totalRefills || 0}</td>
                       <td className="px-6 py-4 text-sm text-gray-900">KES {(customer.totalSpent || 0).toLocaleString()}</td>
                       <td className="px-6 py-4">
                         <span className={`text-sm font-medium ${(customer.creditBalance || 0) > 0 ? 'text-red-600' : 'text-green-600'}`}>
                           KES {(customer.creditBalance || 0).toLocaleString()}
                         </span>
-                       </td>
+                      </td>
                       <td className="px-6 py-4 text-sm text-gray-900">
                         <div className="flex items-center">
                           <Calendar className="w-3 h-3 mr-1 text-gray-400" />
                           {customer.lastRefillDate || 'Never'}
                         </div>
-                       </td>
+                      </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center space-x-2">
                           {customer.phone && (
@@ -347,8 +420,25 @@ const CustomerEngagement = () => {
                               <CreditCard className="w-4 h-4" />
                             </button>
                           )}
+                          <button
+                            onClick={() => fetchCustomerSales(customer)}
+                            className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+                            title="View Sales"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
+                          {/* ✅ DELETE CUSTOMER BUTTON - ADMIN ONLY */}
+                          {isAdmin && (
+                            <button
+                              onClick={() => handleDeleteCustomer(customer)}
+                              className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                              title="Delete Customer"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
                         </div>
-                       </td>
+                      </td>
                     </tr>
                   );
                 })
@@ -360,9 +450,100 @@ const CustomerEngagement = () => {
                 </tr>
               )}
             </tbody>
-           </table>
+          </table>
         </div>
       </div>
+
+      {/* Sales Modal */}
+      {showSalesModal && selectedCustomer && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[80vh] overflow-hidden">
+            <div className="flex justify-between items-center p-6 border-b border-gray-100">
+              <div>
+                <h2 className="text-xl font-semibold text-gray-900">Sales History</h2>
+                <p className="text-sm text-gray-500">Customer: {selectedCustomer.name}</p>
+              </div>
+              <button onClick={() => setShowSalesModal(false)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="overflow-x-auto p-6">
+              {loadingSales ? (
+                <div className="flex justify-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                </div>
+              ) : customerSales.length === 0 ? (
+                <p className="text-center text-gray-500 py-8">No sales found for this customer</p>
+              ) : (
+                <table className="w-full">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Date</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Size</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Qty</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Amount</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Method</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Status</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Staff</th>
+                      {isAdmin && <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Actions</th>}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {customerSales.map((sale) => (
+                      <tr key={sale.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 text-sm text-gray-900">{sale.date}</td>
+                        <td className="px-4 py-3 text-sm text-gray-900">{sale.size}</td>
+                        <td className="px-4 py-3 text-sm text-gray-900">{sale.quantity}</td>
+                        <td className="px-4 py-3 text-sm font-medium text-gray-900">KES {sale.amount}</td>
+                        <td className="px-4 py-3 text-sm">
+                          <span className={`px-2 py-1 text-xs rounded-full ${
+                            sale.method === 'CREDIT' ? 'bg-purple-100 text-purple-700' :
+                            sale.method === 'M_PESA' ? 'bg-green-100 text-green-700' : 
+                            'bg-gray-100 text-gray-700'
+                          }`}>
+                            {formatMethod(sale.method)}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-sm">
+                          <span className={`px-2 py-1 text-xs rounded-full ${
+                            sale.status === 'COMPLETED' ? 'bg-green-100 text-green-700' :
+                            sale.status === 'PENDING' ? 'bg-yellow-100 text-yellow-700' : 
+                            'bg-red-100 text-red-700'
+                          }`}>
+                            {sale.status}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-900">{sale.staff}</td>
+                        {isAdmin && (
+                          <td className="px-4 py-3 text-sm">
+                            <button
+                              onClick={() => handleDeleteSale(sale.id)}
+                              className="p-1 text-red-600 hover:bg-red-50 rounded transition-colors"
+                              title="Delete Sale"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+            
+            <div className="flex justify-end p-6 border-t border-gray-100">
+              <button
+                onClick={() => setShowSalesModal(false)}
+                className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Add Customer Modal */}
       {showAddCustomerModal && (
@@ -452,6 +633,36 @@ const CustomerEngagement = () => {
                 <p className="text-sm text-gray-600 mt-1">
                   Outstanding Balance: <span className="font-bold text-red-600">KES {(selectedCustomer.creditBalance || 0).toLocaleString()}</span>
                 </p>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Payment Method *
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={() => setPaymentMethod('CASH')}
+                    className={`flex items-center justify-center space-x-2 p-3 rounded-lg border-2 transition-colors ${
+                      paymentMethod === 'CASH' 
+                        ? 'border-green-500 bg-green-50 text-green-700' 
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    <DollarSign className="w-4 h-4" />
+                    <span>Cash</span>
+                  </button>
+                  <button
+                    onClick={() => setPaymentMethod('M_PESA')}
+                    className={`flex items-center justify-center space-x-2 p-3 rounded-lg border-2 transition-colors ${
+                      paymentMethod === 'M_PESA' 
+                        ? 'border-green-500 bg-green-50 text-green-700' 
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    <CreditCard className="w-4 h-4" />
+                    <span>M-Pesa</span>
+                  </button>
+                </div>
               </div>
               
               <div>

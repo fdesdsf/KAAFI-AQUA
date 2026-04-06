@@ -90,13 +90,13 @@ public class SaleService {
         }
         
         // If still not found, try by name
-        if (customer == null && request.getCustomer() != null && !request.getCustomer().isEmpty()) {
-            Optional<Customer> customerOpt = customerRepository.findByName(request.getCustomer());
-            if (customerOpt.isPresent()) {
-                customer = customerOpt.get();
-                sale.setCustomerId(customer.getId());
-            }
-        }
+        // if (customer == null && request.getCustomer() != null && !request.getCustomer().isEmpty()) {
+        //     Optional<Customer> customerOpt = customerRepository.findByName(request.getCustomer());
+        //     if (customerOpt.isPresent()) {
+        //         customer = customerOpt.get();
+        //         sale.setCustomerId(customer.getId());
+        //     }
+        // }
         
         // Save sale first
         Sale savedSale = saleRepository.save(sale);
@@ -186,38 +186,53 @@ public class SaleService {
     }
     
     /**
-     * Delete a sale (Admin only)
-     */
-    @Transactional
-    public void deleteSale(Long id) {
-        log.info("Deleting sale with id: {}", id);
-        
-        // Find existing sale
-        Sale sale = saleRepository.findById(id)
-            .orElseThrow(() -> new RuntimeException("Sale not found with id: " + id));
-        
-        // If it was a pending credit sale, adjust customer credit balance
-        if (sale.getMethod() == PaymentMethod.CREDIT && sale.getStatus() == SaleStatus.PENDING) {
-            if (sale.getCustomerId() != null) {
-                Optional<Customer> customerOpt = customerRepository.findById(sale.getCustomerId());
-                if (customerOpt.isPresent()) {
-                    Customer customer = customerOpt.get();
-                    BigDecimal remainingAmount = sale.getAmount().subtract(sale.getPaidAmount());
-                    BigDecimal newBalance = customer.getCreditBalance().subtract(remainingAmount);
-                    if (newBalance.compareTo(BigDecimal.ZERO) < 0) {
-                        newBalance = BigDecimal.ZERO;
-                    }
-                    customer.setCreditBalance(newBalance);
-                    customerRepository.save(customer);
-                    log.info("Adjusted customer {} credit balance to: {}", customer.getName(), newBalance);
-                }
+ * Delete a sale (Admin only)
+ * This also updates the customer's statistics (totalRefills, totalSpent, creditBalance)
+ */
+@Transactional
+public void deleteSale(Long id) {
+    log.info("Deleting sale with id: {}", id);
+    
+    // Find existing sale
+    Sale sale = saleRepository.findById(id)
+        .orElseThrow(() -> new RuntimeException("Sale not found with id: " + id));
+    
+    // Store sale info before deletion
+    Long customerId = sale.getCustomerId();
+    BigDecimal saleAmount = sale.getAmount();
+    BigDecimal paidAmount = sale.getPaidAmount() != null ? sale.getPaidAmount() : BigDecimal.ZERO;
+    boolean isCredit = sale.getMethod() == PaymentMethod.CREDIT;
+    
+    // If it was a credit sale, adjust customer stats
+    if (isCredit && customerId != null) {
+        Optional<Customer> customerOpt = customerRepository.findById(customerId);
+        if (customerOpt.isPresent()) {
+            Customer customer = customerOpt.get();
+            
+            // Calculate remaining balance that was not paid
+            BigDecimal remainingAmount = saleAmount.subtract(paidAmount);
+            
+            // Update credit balance
+            BigDecimal newCreditBalance = customer.getCreditBalance().subtract(remainingAmount);
+            if (newCreditBalance.compareTo(BigDecimal.ZERO) < 0) {
+                newCreditBalance = BigDecimal.ZERO;
             }
+            customer.setCreditBalance(newCreditBalance);
+            
+            // ✅ UPDATE totalRefills and totalSpent (decrease by 1 and sale amount)
+            customer.setTotalRefills(Math.max(0, customer.getTotalRefills() - 1));
+            customer.setTotalSpent(customer.getTotalSpent().subtract(saleAmount));
+            
+            customerRepository.save(customer);
+            log.info("Updated customer {}: refills={}, spent={}, credit={}", 
+                customer.getName(), customer.getTotalRefills(), customer.getTotalSpent(), newCreditBalance);
         }
-        
-        // Delete the sale
-        saleRepository.delete(sale);
-        log.info("Sale deleted successfully: {}", id);
     }
+    
+    // Delete the sale
+    saleRepository.delete(sale);
+    log.info("Sale deleted successfully: {}", id);
+}
     
     private void updateCustomerStats(Customer customer, BigDecimal amount, boolean isCredit) {
         customer.setTotalRefills(customer.getTotalRefills() + 1);
@@ -377,6 +392,19 @@ public class SaleService {
             .collect(Collectors.toList());
     }
     
+    // Get all sales for a specific customer
+public List<SaleResponse> getSalesByCustomerId(Long customerId) {
+    try {
+        List<Sale> sales = saleRepository.findByCustomerId(customerId);
+        return sales.stream()
+            .map(this::mapToSaleResponse)
+            .collect(Collectors.toList());
+    } catch (Exception e) {
+        log.error("Error fetching sales for customer: {}", customerId, e);
+        return new ArrayList<>();
+    }
+}
+
     public List<SaleResponse> getCreditSales() {
         try {
             List<Sale> creditSales = saleRepository.findByMethod(PaymentMethod.CREDIT);

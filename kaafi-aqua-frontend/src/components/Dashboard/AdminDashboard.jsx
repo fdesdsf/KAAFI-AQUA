@@ -77,15 +77,34 @@ const AdminDashboard = () => {
       const response = await api.get('/dashboard/admin');
       const data = response.data.data;
       
+      // Get the actual tank level and capacity from backend
+      const tankLevel = data.tankLevel || 2850;
+      const tankCapacity = data.tankCapacity || 5000;
+      
+      // Calculate percentage manually (this ensures it's always correct)
+      const calculatedPercentage = tankCapacity > 0 ? (tankLevel / tankCapacity) * 100 : 0;
+      
+      // Determine status based on calculated percentage
+      let tankStatus = 'Good';
+      if (calculatedPercentage < 20) {
+        tankStatus = 'Critical - Restock Needed';
+      } else if (calculatedPercentage < 40) {
+        tankStatus = 'Low';
+      } else if (calculatedPercentage > 90) {
+        tankStatus = 'Full';
+      } else {
+        tankStatus = 'Good';
+      }
+      
       setStats({
         todaySales: data.todaySales || 0,
         todayRevenue: data.todayRevenue || 0,
         weeklyRevenue: data.weeklyRevenue || 0,
         monthlyRevenue: data.monthlyRevenue || 0,
-        tankLevel: data.tankLevel || 2850,
-        tankCapacity: data.tankCapacity || 5000,
-        tankPercentage: data.tankPercentage || 57,
-        tankStatus: data.tankStatus || 'Good',
+        tankLevel: tankLevel,
+        tankCapacity: tankCapacity,
+        tankPercentage: calculatedPercentage,
+        tankStatus: tankStatus,
         activeUsers: data.activeUsers || 0,
         totalSales: data.totalSales || 0,
         inventoryValue: data.inventoryValue || 0,
@@ -226,7 +245,7 @@ const AdminDashboard = () => {
             <div className="w-full bg-gray-200 rounded-full h-2">
               <div 
                 className={`h-2 rounded-full transition-all ${tankPercentage < 20 ? 'bg-red-500' : 'bg-green-500'}`}
-                style={{ width: `${tankPercentage}%` }}
+                style={{ width: `${Math.min(100, Math.max(0, tankPercentage))}%` }}
               ></div>
             </div>
             <p className="text-xs text-gray-500 mt-1">{stats.tankLevel}L / {stats.tankCapacity}L</p>

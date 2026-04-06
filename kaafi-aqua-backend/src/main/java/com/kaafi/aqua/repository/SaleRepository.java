@@ -37,6 +37,8 @@ public interface SaleRepository extends JpaRepository<Sale, Long> {
     
     // Find credit sales by customer ID and status
     List<Sale> findByCustomerIdAndMethodAndStatus(Long customerId, PaymentMethod method, SaleStatus status);
+    // Find all sales by customer ID
+    List<Sale> findByCustomerId(Long customerId);
     
     Page<Sale> findByDateBetween(LocalDate startDate, LocalDate endDate, Pageable pageable);
     
