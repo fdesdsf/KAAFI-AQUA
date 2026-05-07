@@ -17,6 +17,8 @@ const SalesHistory = () => {
   const [filterMethod, setFilterMethod] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
   const [dateRange, setDateRange] = useState('all');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
   const [loading, setLoading] = useState(false);
   const [userMap, setUserMap] = useState({});
   const [editingSale, setEditingSale] = useState(null);
@@ -150,19 +152,24 @@ const SalesHistory = () => {
     const today = new Date();
     const saleDate = new Date(sale.date);
     
+    // Handle date range filtering
+    let matchesDateRange = true;
+    
     if (dateRange === 'today') {
-      return matchesSearch && matchesMethod && matchesStatus && saleDate.toDateString() === today.toDateString();
+      matchesDateRange = saleDate.toDateString() === today.toDateString();
     } else if (dateRange === 'week') {
       const weekAgo = new Date();
       weekAgo.setDate(today.getDate() - 7);
-      return matchesSearch && matchesMethod && matchesStatus && saleDate >= weekAgo;
-    } else if (dateRange === 'month') {
-      const monthAgo = new Date();
-      monthAgo.setMonth(today.getMonth() - 1);
-      return matchesSearch && matchesMethod && matchesStatus && saleDate >= monthAgo;
+      matchesDateRange = saleDate >= weekAgo;
+    } else if (dateRange === 'custom' && fromDate && toDate) {
+      const fromDateTime = new Date(fromDate);
+      fromDateTime.setHours(0, 0, 0, 0);
+      const toDateTime = new Date(toDate);
+      toDateTime.setHours(23, 59, 59, 999);
+      matchesDateRange = saleDate >= fromDateTime && saleDate <= toDateTime;
     }
     
-    return matchesSearch && matchesMethod && matchesStatus;
+    return matchesSearch && matchesMethod && matchesStatus && matchesDateRange;
   });
   
   const totalRevenue = filteredSales.reduce((sum, sale) => sum + (sale.amount || 0), 0);
@@ -276,7 +283,11 @@ const SalesHistory = () => {
     switch(dateRange) {
       case 'today': return 'Today';
       case 'week': return 'This Week';
-      case 'month': return 'This Month';
+      case 'custom': 
+        if (fromDate && toDate) {
+          return `${fromDate} to ${toDate}`;
+        }
+        return 'Custom Range';
       default: return 'All Time';
     }
   };
@@ -375,14 +386,39 @@ const SalesHistory = () => {
             
             <select
               value={dateRange}
-              onChange={(e) => setDateRange(e.target.value)}
+              onChange={(e) => {
+                setDateRange(e.target.value);
+                if (e.target.value !== 'custom') {
+                  setFromDate('');
+                  setToDate('');
+                }
+              }}
               className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
             >
               <option value="today">Today</option>
               <option value="week">This Week</option>
-              <option value="month">This Month</option>
               <option value="all">All Time</option>
+              <option value="custom">Custom Range</option>
             </select>
+            
+            {dateRange === 'custom' && (
+              <>
+                <input
+                  type="date"
+                  value={fromDate}
+                  onChange={(e) => setFromDate(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                  placeholder="From Date"
+                />
+                <input
+                  type="date"
+                  value={toDate}
+                  onChange={(e) => setToDate(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                  placeholder="To Date"
+                />
+              </>
+            )}
             
             <div className="flex gap-2">
               <button
@@ -419,7 +455,7 @@ const SalesHistory = () => {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Staff</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                 </tr>
+                </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {filteredSales.length > 0 ? (
