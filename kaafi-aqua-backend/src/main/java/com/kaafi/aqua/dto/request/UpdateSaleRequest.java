@@ -23,4 +23,11 @@ public class UpdateSaleRequest {
     
     @DecimalMin(value = "0.0", message = "Paid amount must be greater than or equal to 0")
     private BigDecimal paidAmount;
+
+    // ✅ ADD DISCOUNT FIELDS HERE
+    @DecimalMin(value = "0.0", message = "Discount amount must be greater than or equal to 0")
+    private BigDecimal discountAmount;
+    
+    @DecimalMin(value = "0.0", message = "Original amount must be greater than or equal to 0")
+    private BigDecimal originalAmount;
 }

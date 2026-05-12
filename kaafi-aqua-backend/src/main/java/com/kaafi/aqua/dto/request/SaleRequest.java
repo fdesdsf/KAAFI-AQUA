@@ -29,4 +29,8 @@ public class SaleRequest {
     // New fields for customer tracking and credit sales
     private String customerPhone;
     private Long customerId;
+
+     // ✅ ADD DISCOUNT FIELDS HERE
+    private BigDecimal discountAmount = BigDecimal.ZERO;  // Discount amount in KES
+    private BigDecimal originalAmount;                    // Original price before discount
 }

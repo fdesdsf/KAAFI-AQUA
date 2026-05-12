@@ -48,6 +48,17 @@ public class SaleService {
             throw new RuntimeException("Insufficient water in tank for this sale");
         }
         
+        // ✅ CALCULATE DISCOUNT
+        BigDecimal originalAmount = request.getAmount();
+        BigDecimal discountAmount = request.getDiscountAmount() != null ? request.getDiscountAmount() : BigDecimal.ZERO;
+        BigDecimal finalAmount = originalAmount.subtract(discountAmount);
+        
+        // Ensure final amount is not negative
+        if (finalAmount.compareTo(BigDecimal.ZERO) < 0) {
+            finalAmount = BigDecimal.ZERO;
+            log.warn("Discount amount {} exceeded original amount {} for sale", discountAmount, originalAmount);
+        }
+        
         // Create sale
         Sale sale = new Sale();
         sale.setDate(LocalDate.now(ZoneId.of("Africa/Nairobi")));
@@ -55,7 +66,9 @@ public class SaleService {
         sale.setCustomer(request.getCustomer());
         sale.setSize(request.getSize());
         sale.setQuantity(request.getQuantity());
-        sale.setAmount(request.getAmount());
+        sale.setAmount(finalAmount);  // Store final amount after discount
+        sale.setOriginalAmount(originalAmount);  // Store original amount before discount
+        sale.setDiscountAmount(discountAmount);  // Store discount amount
         sale.setMethod(request.getMethod());
         sale.setStaff(staffName);
         
@@ -65,7 +78,7 @@ public class SaleService {
             sale.setPaidAmount(BigDecimal.ZERO);
         } else {
             sale.setStatus(SaleStatus.COMPLETED);
-            sale.setPaidAmount(request.getAmount());
+            sale.setPaidAmount(finalAmount);  // Paid amount is the final amount after discount
         }
         
         // Handle customer linking and credit balance update
@@ -88,15 +101,6 @@ public class SaleService {
                 sale.setCustomerId(customer.getId());
             }
         }
-        
-        // If still not found, try by name
-        // if (customer == null && request.getCustomer() != null && !request.getCustomer().isEmpty()) {
-        //     Optional<Customer> customerOpt = customerRepository.findByName(request.getCustomer());
-        //     if (customerOpt.isPresent()) {
-        //         customer = customerOpt.get();
-        //         sale.setCustomerId(customer.getId());
-        //     }
-        // }
         
         // Save sale first
         Sale savedSale = saleRepository.save(sale);
@@ -134,9 +138,15 @@ public class SaleService {
             tankLevelRepository.save(tank);
         }
         
+        // Update activity log with discount info if applicable
+        String discountInfo = "";
+        if (discountAmount.compareTo(BigDecimal.ZERO) > 0) {
+            discountInfo = " Discount: KES " + discountAmount + " (Original: KES " + originalAmount + ")";
+        }
+        
         activityLogger.log(staffName, "CREATE_SALE", "Sale", savedSale.getId(), 
             "Sale created: " + request.getQuantity() + "x " + request.getSize() + " to " + request.getCustomer() +
-            " Method: " + request.getMethod() + " Amount: " + request.getAmount());
+            " Method: " + request.getMethod() + " Final Amount: KES " + finalAmount + discountInfo);
         
         return mapToSaleResponse(savedSale);
     }
@@ -176,6 +186,17 @@ public class SaleService {
         if (request.getPaidAmount() != null) {
             sale.setPaidAmount(request.getPaidAmount());
             log.info("Updated paid amount to: {}", request.getPaidAmount());
+        }
+        
+        // ✅ Allow updating discount fields if provided
+        if (request.getDiscountAmount() != null) {
+            sale.setDiscountAmount(request.getDiscountAmount());
+            log.info("Updated discount amount to: {}", request.getDiscountAmount());
+        }
+        
+        if (request.getOriginalAmount() != null) {
+            sale.setOriginalAmount(request.getOriginalAmount());
+            log.info("Updated original amount to: {}", request.getOriginalAmount());
         }
         
         // Save the updated sale
@@ -476,10 +497,30 @@ public List<SaleResponse> getSalesByCustomerId(Long customerId) {
             return new ArrayList<>();
         }
     }
+
+    // Add this method anywhere in your SaleService class (e.g., near the getSalesBetweenDates method)
+
+public List<SaleResponse> getAllSales() {
+    try {
+        log.info("Fetching ALL sales from database");
+        List<Sale> sales = saleRepository.findAllByOrderByDateDesc();
+        if (sales == null || sales.isEmpty()) {
+            log.info("No sales found in database");
+            return new ArrayList<>();
+        }
+        return sales.stream()
+            .map(this::mapToSaleResponse)
+            .filter(response -> response != null)
+            .collect(Collectors.toList());
+    } catch (Exception e) {
+        log.error("Error fetching all sales", e);
+        return new ArrayList<>();
+    }
+}
     
     public Page<SaleResponse> getSalesBetweenDatesPaginated(LocalDate startDate, LocalDate endDate, int page, int size) {
         try {
-            Pageable pageable = PageRequest.of(page, size);
+            Pageable pageable = PageRequest.of(page, size, org.springframework.data.domain.Sort.by("date").descending());
             Page<Sale> salePage = saleRepository.findByDateBetween(startDate, endDate, pageable);
             if (salePage == null || salePage.isEmpty()) {
                 return new PageImpl<>(new ArrayList<>(), pageable, 0);
@@ -554,9 +595,14 @@ public List<SaleResponse> getSalesByCustomerId(Long customerId) {
             response.setMethod(sale.getMethod());
             response.setStatus(sale.getStatus());
             response.setStaff(sale.getStaff());
-            response.setPaidAmount(sale.getPaidAmount());           // ✅ ADDED
-            response.setRemainingBalance(sale.getRemainingBalance()); // ✅ ADDED
-            response.setCustomerId(sale.getCustomerId());           // ✅ ADDED
+            response.setPaidAmount(sale.getPaidAmount());
+            response.setRemainingBalance(sale.getRemainingBalance());
+            response.setCustomerId(sale.getCustomerId());
+            
+            // ✅ ADD DISCOUNT FIELDS TO RESPONSE
+            response.setDiscountAmount(sale.getDiscountAmount());
+            response.setOriginalAmount(sale.getOriginalAmount());
+            
             return response;
         } catch (Exception e) {
             log.error("Error mapping sale to response for sale id: {}", sale.getId(), e);

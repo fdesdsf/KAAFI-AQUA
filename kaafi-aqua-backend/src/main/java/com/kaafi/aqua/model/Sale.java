@@ -41,6 +41,13 @@ public class Sale {
     @Column(nullable = false, precision = 10, scale = 2)
     private BigDecimal amount;
     
+    // ✅ ADD DISCOUNT FIELDS HERE (after amount)
+    @Column(name = "discount_amount", precision = 10, scale = 2)
+    private BigDecimal discountAmount = BigDecimal.ZERO;
+    
+    @Column(name = "original_amount", precision = 10, scale = 2)
+    private BigDecimal originalAmount;
+    
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private PaymentMethod method = PaymentMethod.CASH;
@@ -85,6 +92,15 @@ public class Sale {
     
     public BigDecimal getAmount() { return amount; }
     public void setAmount(BigDecimal amount) { this.amount = amount; }
+    
+    // ✅ ADD GETTERS AND SETTERS FOR DISCOUNT FIELDS
+    public BigDecimal getDiscountAmount() { return discountAmount; }
+    public void setDiscountAmount(BigDecimal discountAmount) { 
+        this.discountAmount = discountAmount != null ? discountAmount : BigDecimal.ZERO;
+    }
+    
+    public BigDecimal getOriginalAmount() { return originalAmount; }
+    public void setOriginalAmount(BigDecimal originalAmount) { this.originalAmount = originalAmount; }
     
     public PaymentMethod getMethod() { return method; }
     public void setMethod(PaymentMethod method) { this.method = method; }
@@ -134,6 +150,13 @@ public class Sale {
         if (paidAmount == null) {
             paidAmount = BigDecimal.ZERO;
         }
+        // ✅ Initialize discount fields
+        if (discountAmount == null) {
+            discountAmount = BigDecimal.ZERO;
+        }
+        if (originalAmount == null && amount != null) {
+            originalAmount = amount;
+        }
     }
     
     // Helper method to check if sale is fully paid
@@ -146,5 +169,10 @@ public class Sale {
         if (amount == null) return BigDecimal.ZERO;
         if (paidAmount == null) return amount;
         return amount.subtract(paidAmount);
+    }
+    
+    // ✅ Helper method to check if discount was applied
+    public boolean hasDiscount() {
+        return discountAmount != null && discountAmount.compareTo(BigDecimal.ZERO) > 0;
     }
 }

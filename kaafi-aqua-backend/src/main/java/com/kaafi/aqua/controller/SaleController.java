@@ -39,15 +39,24 @@ public class SaleController {
     }
     
     @GetMapping
-    @PreAuthorize("hasAnyRole('ADMIN', 'STAFF')")
-    public ResponseEntity<ApiResponse<List<SaleResponse>>> getAllSales() {
-        log.info("Fetching all sales for the last 30 days");
-        List<SaleResponse> sales = saleService.getSalesBetweenDates(
-            LocalDate.now().minusDays(30), 
-            LocalDate.now()
-        );
-        return ResponseEntity.ok(ApiResponse.success("Sales fetched successfully", sales));
+@PreAuthorize("hasAnyRole('ADMIN', 'STAFF')")
+public ResponseEntity<ApiResponse<List<SaleResponse>>> getAllSales(
+        @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+        @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+    
+    List<SaleResponse> sales;
+    
+    if (startDate != null && endDate != null) {
+        log.info("Fetching sales between {} and {}", startDate, endDate);
+        sales = saleService.getSalesBetweenDates(startDate, endDate);
+    } else {
+        log.info("Fetching all sales (no date filter)");
+        // Fetch all sales - you'll need a new method in your service
+        sales = saleService.getAllSales(); // You need to implement this
     }
+    
+    return ResponseEntity.ok(ApiResponse.success("Sales fetched successfully", sales));
+}
     
     // ✅ UPDATED - Update sale (Admin only) - Changed from /admin/sales/{id} to /admin/{id}
     @PutMapping("/admin/{id}")
@@ -99,7 +108,8 @@ public class SaleController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size) {
+            @RequestParam(defaultValue = "20") int size,
+             @RequestParam(defaultValue = "date,desc") String sort) {
         Page<SaleResponse> sales = saleService.getSalesBetweenDatesPaginated(startDate, endDate, page, size);
         return ResponseEntity.ok(ApiResponse.success(sales));
     }

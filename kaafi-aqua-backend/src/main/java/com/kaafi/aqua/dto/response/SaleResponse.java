@@ -23,4 +23,6 @@ public class SaleResponse {
     private BigDecimal paidAmount;           // ✅ ADD THIS
     private BigDecimal remainingBalance;     // ✅ ADD THIS
     private Long customerId;
+    private BigDecimal discountAmount;       // ✅ ADD THIS
+    private BigDecimal originalAmount;       // ✅ ADD THIS
 }

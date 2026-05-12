@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { Droplets, CreditCard, DollarSign, Phone, Package, Truck, ShoppingCart, Plus, Minus } from 'lucide-react';
+import { Droplets, CreditCard, DollarSign, Phone, Package, Truck, ShoppingCart, Plus, Minus, Percent, Tag } from 'lucide-react';
 import { useSales } from '../../context/SalesContext';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../services/api';
@@ -18,6 +18,11 @@ const RefillPOS = () => {
   const [customerPhone, setCustomerPhone] = useState('');
   const [processing, setProcessing] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState('CASH');
+  
+  // ✅ DISCOUNT STATE
+  const [discountType, setDiscountType] = useState('NONE'); // 'NONE', 'PERCENTAGE', 'FIXED'
+  const [discountValue, setDiscountValue] = useState('');
+  const [discountAmount, setDiscountAmount] = useState(0);
   
   // Product data from API
   const [products, setProducts] = useState([]);
@@ -48,6 +53,8 @@ const RefillPOS = () => {
     setSelectedProduct(null);
     setSelectedContainer(null);
     setQuantity(1);
+    // ✅ Reset discount when sale type changes
+    resetDiscount();
   }, [saleType]);
 
   const fetchProducts = async () => {
@@ -83,6 +90,37 @@ const RefillPOS = () => {
       console.error('Failed to fetch containers:', error);
       toast.error('Failed to load containers');
     }
+  };
+
+  // ✅ DISCOUNT FUNCTIONS
+  const resetDiscount = () => {
+    setDiscountType('NONE');
+    setDiscountValue('');
+    setDiscountAmount(0);
+  };
+
+  const calculateDiscountFromValue = (subtotal, type, value) => {
+    if (type === 'NONE' || !value) return 0;
+    if (type === 'PERCENTAGE') {
+      return (subtotal * parseFloat(value)) / 100;
+    }
+    if (type === 'FIXED') {
+      return parseFloat(value);
+    }
+    return 0;
+  };
+
+  const handleDiscountTypeChange = (type) => {
+    setDiscountType(type);
+    setDiscountValue('');
+    setDiscountAmount(0);
+  };
+
+  const handleDiscountValueChange = (value) => {
+    setDiscountValue(value);
+    const subtotal = calculateItemTotal();
+    const calculatedDiscount = calculateDiscountFromValue(subtotal, discountType, value);
+    setDiscountAmount(calculatedDiscount);
   };
 
   const getProductsByCategory = () => {
@@ -127,6 +165,13 @@ const RefillPOS = () => {
     return total;
   };
 
+  // ✅ Calculate final total after discount
+  const calculateFinalTotal = () => {
+    const subtotal = calculateItemTotal();
+    const finalTotal = subtotal - discountAmount;
+    return finalTotal > 0 ? finalTotal : 0;
+  };
+
   const addToCart = () => {
     if (!selectedProduct) {
       toast.error('Please select a product');
@@ -138,20 +183,28 @@ const RefillPOS = () => {
       return;
     }
     
+    const subtotal = calculateItemTotal();
+    const finalTotal = calculateFinalTotal();
+    
     const cartItem = {
       id: Date.now(),
       saleType,
       product: selectedProduct,
       container: selectedContainer,
       quantity,
-      subtotal: calculateItemTotal()
+      subtotal: subtotal, // Original subtotal
+      discountAmount: discountAmount, // Discount applied to this item
+      finalAmount: finalTotal, // Amount after discount
+      discountType: discountType,
+      discountValue: discountValue
     };
     
     setCart([...cart, cartItem]);
     setSelectedProduct(null);
     setSelectedContainer(null);
     setQuantity(1);
-    toast.success('Item added to cart');
+    resetDiscount();
+    toast.success(`Item added to cart${discountAmount > 0 ? ` with KES ${discountAmount} discount` : ''}`);
   };
 
   const removeFromCart = (itemId) => {
@@ -159,7 +212,7 @@ const RefillPOS = () => {
   };
 
   const calculateCartTotal = () => {
-    return cart.reduce((sum, item) => sum + item.subtotal, 0);
+    return cart.reduce((sum, item) => sum + item.finalAmount, 0);
   };
 
   const getSaleTypeId = (code) => {
@@ -192,15 +245,22 @@ const RefillPOS = () => {
     
     try {
       for (const item of cart) {
+        // ✅ Calculate original amount and discount
+        const originalAmount = item.subtotal;
+        const discountAmt = item.discountAmount || 0;
+        const finalAmount = item.finalAmount;
+        
         const saleData = {
           date: new Date().toISOString().split('T')[0],
           time: new Date().toTimeString().split(' ')[0],
           customer: customerName,
           customerPhone: customerPhone,
-          customerId: null,  // Let backend handle customer matching by phone
+          customerId: null,
           size: item.product.size,
           quantity: item.quantity,
-          amount: item.subtotal,
+          amount: finalAmount, // Final amount after discount
+          originalAmount: originalAmount, // ✅ Original amount before discount
+          discountAmount: discountAmt, // ✅ Discount amount
           method: paymentMethod,
           status: 'COMPLETED',
           staff: user?.name || 'Staff',
@@ -210,15 +270,24 @@ const RefillPOS = () => {
           containerCharge: item.container?.price || 0
         };
         
-        console.log('📤 Sending sale data:', saleData);
+        console.log('📤 Sending sale data with discount:', saleData);
         await addSale(saleData);
       }
       
-      toast.success(`Sale complete! Total: KES ${calculateCartTotal()}`);
+      const totalWithDiscount = calculateCartTotal();
+      const totalDiscount = cart.reduce((sum, item) => sum + (item.discountAmount || 0), 0);
+      
+      if (totalDiscount > 0) {
+        toast.success(`Sale complete! Total: KES ${totalWithDiscount} (Saved: KES ${totalDiscount})`);
+      } else {
+        toast.success(`Sale complete! Total: KES ${totalWithDiscount}`);
+      }
+      
       setCart([]);
       setCustomerName('');
       setCustomerPhone('');
       setPaymentMethod('CASH');
+      resetDiscount();
       await refreshSales();
     } catch (error) {
       console.error('Checkout failed:', error);
@@ -361,7 +430,7 @@ const RefillPOS = () => {
             </div>
           )}
 
-          {/* Quantity and Add to Cart */}
+          {/* Quantity and Add to Cart with DISCOUNT */}
           {selectedProduct && (
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
               <div className="grid grid-cols-2 gap-4 mb-4">
@@ -391,9 +460,75 @@ const RefillPOS = () => {
                 </div>
                 
                 <div className="text-right">
-                  <p className="text-sm text-gray-500">Item Total</p>
+                  <p className="text-sm text-gray-500">Subtotal</p>
                   <p className="text-2xl font-bold text-blue-600">KES {calculateItemTotal()}</p>
                 </div>
+              </div>
+
+              {/* ✅ DISCOUNT SECTION */}
+              <div className="border-t border-gray-100 pt-4 mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">Discount</label>
+                <div className="flex space-x-2 mb-3">
+                  <button
+                    onClick={() => handleDiscountTypeChange('NONE')}
+                    className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                      discountType === 'NONE'
+                        ? 'bg-gray-600 text-white'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    No Discount
+                  </button>
+                  <button
+                    onClick={() => handleDiscountTypeChange('PERCENTAGE')}
+                    className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all flex items-center justify-center space-x-1 ${
+                      discountType === 'PERCENTAGE'
+                        ? 'bg-green-600 text-white'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    <Percent className="w-3 h-3" />
+                    <span>Percentage</span>
+                  </button>
+                  <button
+                    onClick={() => handleDiscountTypeChange('FIXED')}
+                    className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all flex items-center justify-center space-x-1 ${
+                      discountType === 'FIXED'
+                        ? 'bg-green-600 text-white'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    <Tag className="w-3 h-3" />
+                    <span>Fixed (KES)</span>
+                  </button>
+                </div>
+
+                {discountType !== 'NONE' && (
+                  <div className="mb-3">
+                    <input
+                      type="number"
+                      value={discountValue}
+                      onChange={(e) => handleDiscountValueChange(e.target.value)}
+                      placeholder={discountType === 'PERCENTAGE' ? 'Enter percentage (e.g., 10)' : 'Enter amount in KES (e.g., 50)'}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                      min="0"
+                      step={discountType === 'PERCENTAGE' ? '1' : '5'}
+                    />
+                  </div>
+                )}
+
+                {discountAmount > 0 && (
+                  <div className="bg-green-50 rounded-lg p-3 mb-3">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-green-700">Discount Applied:</span>
+                      <span className="font-bold text-green-700">- KES {discountAmount}</span>
+                    </div>
+                    <div className="flex justify-between font-bold mt-1">
+                      <span className="text-gray-700">Final Total:</span>
+                      <span className="text-blue-600">KES {calculateFinalTotal()}</span>
+                    </div>
+                  </div>
+                )}
               </div>
               
               <button
@@ -409,7 +544,7 @@ const RefillPOS = () => {
 
         {/* Right Column - Cart & Payment */}
         <div className="space-y-6">
-          {/* Customer Section - Simplified without Find Existing button */}
+          {/* Customer Section */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Customer Name *
@@ -470,9 +605,19 @@ const RefillPOS = () => {
                           <p className="text-xs text-gray-500">+ {item.container.name}</p>
                         )}
                         <p className="text-xs text-gray-400">Qty: {item.quantity}</p>
+                        {item.discountAmount > 0 && (
+                          <p className="text-xs text-green-600">Discount: -KES {item.discountAmount}</p>
+                        )}
                       </div>
                       <div className="text-right">
-                        <p className="font-bold text-blue-600">KES {item.subtotal}</p>
+                        {item.discountAmount > 0 ? (
+                          <>
+                            <p className="text-xs text-gray-400 line-through">KES {item.subtotal}</p>
+                            <p className="font-bold text-blue-600">KES {item.finalAmount}</p>
+                          </>
+                        ) : (
+                          <p className="font-bold text-blue-600">KES {item.subtotal}</p>
+                        )}
                         <button
                           onClick={() => removeFromCart(item.id)}
                           className="text-red-500 hover:text-red-700 text-xs mt-1"
@@ -494,8 +639,14 @@ const RefillPOS = () => {
             <div className="space-y-3 mb-4">
               <div className="flex justify-between py-2 border-b border-gray-100">
                 <span className="text-gray-600">Subtotal:</span>
-                <span className="font-medium">KES {calculateCartTotal()}</span>
+                <span className="font-medium">KES {cart.reduce((sum, item) => sum + item.subtotal, 0)}</span>
               </div>
+              {cart.reduce((sum, item) => sum + (item.discountAmount || 0), 0) > 0 && (
+                <div className="flex justify-between py-2 border-b border-gray-100">
+                  <span className="text-green-600">Total Discount:</span>
+                  <span className="font-medium text-green-600">- KES {cart.reduce((sum, item) => sum + (item.discountAmount || 0), 0)}</span>
+                </div>
+              )}
               <div className="flex justify-between py-2 text-lg font-bold">
                 <span>Total:</span>
                 <span className="text-blue-600">KES {calculateCartTotal()}</span>

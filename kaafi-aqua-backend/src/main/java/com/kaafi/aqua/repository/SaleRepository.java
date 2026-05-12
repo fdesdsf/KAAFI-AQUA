@@ -97,4 +97,10 @@ public interface SaleRepository extends JpaRepository<Sale, Long> {
     @Transactional
     @Query("UPDATE Sale s SET s.paidAmount = :paidAmount, s.status = CASE WHEN :paidAmount >= s.amount THEN 'COMPLETED' ELSE s.status END WHERE s.id = :saleId")
     int updateSalePayment(@Param("saleId") Long saleId, @Param("paidAmount") BigDecimal paidAmount);
+
+     // ✅ ADD THIS NEW METHOD HERE - BEFORE THE LAST BRACE
+    /**
+     * Find all sales ordered by date descending (newest first)
+     */
+    List<Sale> findAllByOrderByDateDesc();
 }

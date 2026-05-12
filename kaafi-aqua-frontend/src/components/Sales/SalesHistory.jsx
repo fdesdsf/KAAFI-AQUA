@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, FileText, FileSpreadsheet, Users, Edit, Trash2, CreditCard } from 'lucide-react';
+import { Search, FileText, FileSpreadsheet, Users, Edit, Trash2, CreditCard, ChevronLeft, ChevronRight, Percent, Tag } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
 import jsPDF from 'jspdf';
@@ -29,8 +29,18 @@ const SalesHistory = () => {
     method: '',
     status: '',
     paidAmount: '',
-    remainingBalance: ''
+    remainingBalance: '',
+    discountAmount: '',
+    originalAmount: ''
   });
+  
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(0);
+  const [pageSize, setPageSize] = useState(20);
+  const [totalPages, setTotalPages] = useState(0);
+  const [totalElements, setTotalElements] = useState(0);
+  const [paginatedSales, setPaginatedSales] = useState([]);
+  
   const navigate = useNavigate();
 
   // Check if user is admin
@@ -44,8 +54,79 @@ const SalesHistory = () => {
   }, [isAdmin]);
 
   useEffect(() => {
-    refreshSales();
-  }, []);
+    fetchPaginatedSales();
+  }, [currentPage, pageSize, dateRange, fromDate, toDate, filterMethod, filterStatus, searchTerm]);
+
+  const fetchPaginatedSales = async () => {
+    try {
+      setLoading(true);
+      
+      // Determine date range for API call
+      let startDate, endDate;
+      const today = new Date();
+      
+      if (dateRange === 'today') {
+        startDate = today.toISOString().split('T')[0];
+        endDate = today.toISOString().split('T')[0];
+      } else if (dateRange === 'week') {
+        const weekAgo = new Date();
+        weekAgo.setDate(today.getDate() - 7);
+        startDate = weekAgo.toISOString().split('T')[0];
+        endDate = today.toISOString().split('T')[0];
+      } else if (dateRange === 'custom' && fromDate && toDate) {
+        startDate = fromDate;
+        endDate = toDate;
+      } else {
+        // All time - use a wide date range
+        startDate = '2020-01-01';
+        endDate = today.toISOString().split('T')[0];
+      }
+      
+      // Build query params
+      const params = {
+        startDate: startDate,
+        endDate: endDate,
+        page: currentPage,
+        size: pageSize
+      };
+      
+      const response = await api.get('/sales/between/paginated', { params });
+      
+      if (response.data.success) {
+        let salesData = response.data.data.content;
+        
+        // Apply additional filters (method, status, search) client-side
+        let filtered = salesData;
+        
+        if (filterMethod !== 'all') {
+          filtered = filtered.filter(sale => 
+            (filterMethod === 'Cash' && sale.method === 'CASH') ||
+            (filterMethod === 'M-Pesa' && sale.method === 'M_PESA') ||
+            (filterMethod === 'Credit' && sale.method === 'CREDIT')
+          );
+        }
+        
+        if (filterStatus !== 'all') {
+          filtered = filtered.filter(sale => sale.status === filterStatus);
+        }
+        
+        if (searchTerm) {
+          filtered = filtered.filter(sale => 
+            sale.customer?.toLowerCase().includes(searchTerm.toLowerCase())
+          );
+        }
+        
+        setPaginatedSales(filtered);
+        setTotalPages(response.data.data.totalPages);
+        setTotalElements(response.data.data.totalElements);
+      }
+    } catch (error) {
+      console.error('Error fetching paginated sales:', error);
+      toast.error('Failed to fetch sales');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const fetchUsers = async () => {
     try {
@@ -65,14 +146,12 @@ const SalesHistory = () => {
   };
 
   const getUserInfo = (username) => {
-    // For non-admin users, just return the username
     if (!isAdmin) {
       return { name: username, roleDisplay: '' };
     }
     return userMap[username] || { name: username, roleDisplay: '' };
   };
 
-  // Handle Edit Sale
   const handleEditClick = (sale) => {
     setEditingSale(sale);
     setEditFormData({
@@ -81,7 +160,9 @@ const SalesHistory = () => {
       method: sale.method,
       status: sale.status,
       paidAmount: sale.paidAmount || 0,
-      remainingBalance: sale.remainingBalance || (sale.status === 'PENDING' ? sale.amount : 0)
+      remainingBalance: sale.remainingBalance || (sale.status === 'PENDING' ? sale.amount : 0),
+      discountAmount: sale.discountAmount || 0,
+      originalAmount: sale.originalAmount || sale.amount
     });
     setShowEditModal(true);
   };
@@ -97,7 +178,9 @@ const SalesHistory = () => {
         paidAmount: parseFloat(editFormData.paidAmount || 0),
         remainingBalance: editFormData.status === 'PENDING' 
           ? parseFloat(editFormData.remainingBalance || editFormData.amount)
-          : 0
+          : 0,
+        discountAmount: parseFloat(editFormData.discountAmount || 0),
+        originalAmount: parseFloat(editFormData.originalAmount || editFormData.amount)
       };
 
       const response = await api.put(`/sales/admin/${editingSale.id}`, updateData);
@@ -105,6 +188,7 @@ const SalesHistory = () => {
       if (response.data.success) {
         toast.success('Sale updated successfully!');
         setShowEditModal(false);
+        fetchPaginatedSales();
         refreshSales();
       } else {
         toast.error(response.data.message || 'Failed to update sale');
@@ -117,7 +201,6 @@ const SalesHistory = () => {
     }
   };
 
-  // Handle Delete Sale
   const handleDeleteClick = async (sale) => {
     if (!window.confirm(`Are you sure you want to delete sale #${sale.id} for ${sale.customer}? This action cannot be undone.`)) {
       return;
@@ -129,6 +212,7 @@ const SalesHistory = () => {
       
       if (response.data.success) {
         toast.success('Sale deleted successfully!');
+        fetchPaginatedSales();
         refreshSales();
       } else {
         toast.error(response.data.message || 'Failed to delete sale');
@@ -141,40 +225,10 @@ const SalesHistory = () => {
     }
   };
 
-  const filteredSales = sales.filter(sale => {
-    const matchesSearch = sale.customer?.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesMethod = filterMethod === 'all' || 
-      (filterMethod === 'Cash' && sale.method === 'CASH') ||
-      (filterMethod === 'M-Pesa' && sale.method === 'M_PESA') ||
-      (filterMethod === 'Credit' && sale.method === 'CREDIT');
-    const matchesStatus = filterStatus === 'all' || sale.status === filterStatus;
-    
-    const today = new Date();
-    const saleDate = new Date(sale.date);
-    
-    // Handle date range filtering
-    let matchesDateRange = true;
-    
-    if (dateRange === 'today') {
-      matchesDateRange = saleDate.toDateString() === today.toDateString();
-    } else if (dateRange === 'week') {
-      const weekAgo = new Date();
-      weekAgo.setDate(today.getDate() - 7);
-      matchesDateRange = saleDate >= weekAgo;
-    } else if (dateRange === 'custom' && fromDate && toDate) {
-      const fromDateTime = new Date(fromDate);
-      fromDateTime.setHours(0, 0, 0, 0);
-      const toDateTime = new Date(toDate);
-      toDateTime.setHours(23, 59, 59, 999);
-      matchesDateRange = saleDate >= fromDateTime && saleDate <= toDateTime;
-    }
-    
-    return matchesSearch && matchesMethod && matchesStatus && matchesDateRange;
-  });
-  
-  const totalRevenue = filteredSales.reduce((sum, sale) => sum + (sale.amount || 0), 0);
-  const totalTransactions = filteredSales.length;
-  const pendingAmount = filteredSales
+  const totalRevenue = paginatedSales.reduce((sum, sale) => sum + (sale.amount || 0), 0);
+  const totalTransactions = paginatedSales.length;
+  const totalDiscount = paginatedSales.reduce((sum, sale) => sum + (sale.discountAmount || 0), 0);
+  const pendingAmount = paginatedSales
     .filter(sale => sale.status === 'PENDING')
     .reduce((sum, sale) => sum + (sale.amount || 0), 0);
   
@@ -199,7 +253,7 @@ const SalesHistory = () => {
   };
   
   const exportToExcel = () => {
-    const exportData = filteredSales.map(sale => {
+    const exportData = paginatedSales.map(sale => {
       const userInfo = getUserInfo(sale.staff);
       return {
         'Date': sale.date,
@@ -207,7 +261,9 @@ const SalesHistory = () => {
         'Customer': sale.customer,
         'Size': sale.size,
         'Quantity': sale.quantity,
-        'Amount (KES)': sale.amount,
+        'Original Amount (KES)': sale.originalAmount || sale.amount,
+        'Discount (KES)': sale.discountAmount || 0,
+        'Final Amount (KES)': sale.amount,
         'Payment Method': formatMethod(sale.method),
         'Staff Name': userInfo.name,
         'Staff Role': userInfo.roleDisplay,
@@ -236,9 +292,10 @@ const SalesHistory = () => {
     doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 30);
     doc.text(`Total Revenue: KES ${totalRevenue.toLocaleString()}`, 14, 38);
     doc.text(`Total Transactions: ${totalTransactions}`, 14, 46);
-    doc.text(`Pending Amount: KES ${pendingAmount.toLocaleString()}`, 14, 54);
+    doc.text(`Total Discount Given: KES ${totalDiscount.toLocaleString()}`, 14, 54);
+    doc.text(`Pending Amount: KES ${pendingAmount.toLocaleString()}`, 14, 62);
     
-    const tableData = filteredSales.map(sale => {
+    const tableData = paginatedSales.map(sale => {
       const userInfo = getUserInfo(sale.staff);
       return [
         sale.date,
@@ -246,6 +303,8 @@ const SalesHistory = () => {
         sale.customer,
         sale.size,
         sale.quantity.toString(),
+        `KES ${sale.originalAmount || sale.amount}`,
+        `KES ${sale.discountAmount || 0}`,
         `KES ${sale.amount}`,
         formatMethod(sale.method),
         userInfo.name,
@@ -255,23 +314,25 @@ const SalesHistory = () => {
     });
     
     autoTable(doc, {
-      startY: 62,
-      head: [['Date', 'Time', 'Customer', 'Size', 'Qty', 'Amount', 'Method', 'Staff', 'Role', 'Status']],
+      startY: 70,
+      head: [['Date', 'Time', 'Customer', 'Size', 'Qty', 'Original', 'Discount', 'Final', 'Method', 'Staff', 'Role', 'Status']],
       body: tableData,
       theme: 'striped',
-      headStyles: { fillColor: [59, 130, 246], textColor: 255, fontSize: 7 },
-      bodyStyles: { fontSize: 6 },
+      headStyles: { fillColor: [59, 130, 246], textColor: 255, fontSize: 6 },
+      bodyStyles: { fontSize: 5 },
       columnStyles: {
-        0: { cellWidth: 18 },
-        1: { cellWidth: 15 },
-        2: { cellWidth: 28 },
-        3: { cellWidth: 10 },
-        4: { cellWidth: 8 },
-        5: { cellWidth: 18 },
-        6: { cellWidth: 15 },
-        7: { cellWidth: 25 },
-        8: { cellWidth: 18 },
-        9: { cellWidth: 12 }
+        0: { cellWidth: 16 },
+        1: { cellWidth: 12 },
+        2: { cellWidth: 22 },
+        3: { cellWidth: 8 },
+        4: { cellWidth: 6 },
+        5: { cellWidth: 14 },
+        6: { cellWidth: 14 },
+        7: { cellWidth: 14 },
+        8: { cellWidth: 12 },
+        9: { cellWidth: 20 },
+        10: { cellWidth: 14 },
+        11: { cellWidth: 10 }
       }
     });
     
@@ -292,6 +353,15 @@ const SalesHistory = () => {
     }
   };
   
+  const handlePageChange = (newPage) => {
+    setCurrentPage(newPage);
+  };
+
+  const handlePageSizeChange = (e) => {
+    setPageSize(parseInt(e.target.value));
+    setCurrentPage(0);
+  };
+
   return (
     <>
       <div className="p-6">
@@ -306,7 +376,7 @@ const SalesHistory = () => {
         </div>
         
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-6 mb-6">
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
             <p className="text-sm text-gray-600 mb-1">Total Revenue</p>
             <p className="text-2xl font-bold text-gray-900">KES {totalRevenue.toLocaleString()}</p>
@@ -321,6 +391,11 @@ const SalesHistory = () => {
             <p className="text-sm text-gray-600 mb-1">Average Sale</p>
             <p className="text-2xl font-bold text-gray-900">KES {totalTransactions > 0 ? Math.round(totalRevenue / totalTransactions) : 0}</p>
             <p className="text-xs text-gray-500 mt-1">Per transaction</p>
+          </div>
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+            <p className="text-sm text-gray-600 mb-1">Total Discount</p>
+            <p className="text-2xl font-bold text-green-600">KES {totalDiscount.toLocaleString()}</p>
+            <p className="text-xs text-gray-500 mt-1">{getDateRangeLabel()}</p>
           </div>
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
             <p className="text-sm text-gray-600 mb-1">Pending Amount</p>
@@ -356,7 +431,10 @@ const SalesHistory = () => {
                   type="text"
                   placeholder="Search by customer name..."
                   value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
+                  onChange={(e) => {
+                    setSearchTerm(e.target.value);
+                    setCurrentPage(0);
+                  }}
                   className="pl-9 w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                 />
               </div>
@@ -364,7 +442,10 @@ const SalesHistory = () => {
             
             <select
               value={filterMethod}
-              onChange={(e) => setFilterMethod(e.target.value)}
+              onChange={(e) => {
+                setFilterMethod(e.target.value);
+                setCurrentPage(0);
+              }}
               className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
             >
               <option value="all">All Payment Methods</option>
@@ -375,7 +456,10 @@ const SalesHistory = () => {
             
             <select
               value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value)}
+              onChange={(e) => {
+                setFilterStatus(e.target.value);
+                setCurrentPage(0);
+              }}
               className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
             >
               <option value="all">All Status</option>
@@ -388,6 +472,7 @@ const SalesHistory = () => {
               value={dateRange}
               onChange={(e) => {
                 setDateRange(e.target.value);
+                setCurrentPage(0);
                 if (e.target.value !== 'custom') {
                   setFromDate('');
                   setToDate('');
@@ -406,14 +491,20 @@ const SalesHistory = () => {
                 <input
                   type="date"
                   value={fromDate}
-                  onChange={(e) => setFromDate(e.target.value)}
+                  onChange={(e) => {
+                    setFromDate(e.target.value);
+                    setCurrentPage(0);
+                  }}
                   className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
                   placeholder="From Date"
                 />
                 <input
                   type="date"
                   value={toDate}
-                  onChange={(e) => setToDate(e.target.value)}
+                  onChange={(e) => {
+                    setToDate(e.target.value);
+                    setCurrentPage(0);
+                  }}
                   className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
                   placeholder="To Date"
                 />
@@ -450,7 +541,9 @@ const SalesHistory = () => {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Size</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Qty</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Original</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Discount</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Final</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Method</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Staff</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
@@ -458,9 +551,18 @@ const SalesHistory = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {filteredSales.length > 0 ? (
-                  filteredSales.map((sale) => {
+                {loading ? (
+                  <tr>
+                    <td colSpan="11" className="text-center py-12">
+                      <div className="flex justify-center">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                      </div>
+                    </td>
+                  </tr>
+                ) : paginatedSales.length > 0 ? (
+                  paginatedSales.map((sale) => {
                     const userInfo = getUserInfo(sale.staff);
+                    const hasDiscount = sale.discountAmount > 0;
                     return (
                       <tr key={sale.id} className="hover:bg-gray-50">
                         <td className="px-6 py-4 text-sm text-gray-900">
@@ -470,7 +572,23 @@ const SalesHistory = () => {
                         <td className="px-6 py-4 text-sm text-gray-900">{sale.customer}</td>
                         <td className="px-6 py-4 text-sm text-gray-900">{sale.size}</td>
                         <td className="px-6 py-4 text-sm text-gray-900">{sale.quantity}</td>
-                        <td className="px-6 py-4 text-sm font-medium text-gray-900">KES {sale.amount}</td>
+                        <td className="px-6 py-4 text-sm text-gray-400">
+                          {hasDiscount ? (
+                            <span className="line-through">KES {sale.originalAmount || sale.amount}</span>
+                          ) : (
+                            <span>KES {sale.amount}</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 text-sm">
+                          {hasDiscount ? (
+                            <span className="text-green-600 font-medium">-KES {sale.discountAmount}</span>
+                          ) : (
+                            <span className="text-gray-400">-</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 text-sm font-medium text-blue-600">
+                          KES {sale.amount}
+                        </td>
                         <td className="px-6 py-4 text-sm">
                           <span className={`px-2 py-1 text-xs rounded-full ${
                             sale.method === 'CREDIT' ? 'bg-purple-100 text-purple-700' :
@@ -539,7 +657,7 @@ const SalesHistory = () => {
                   })
                 ) : (
                   <tr>
-                    <td colSpan="9" className="text-center py-12">
+                    <td colSpan="11" className="text-center py-12">
                       <p className="text-gray-500">No sales found for the selected filters</p>
                     </td>
                   </tr>
@@ -548,9 +666,80 @@ const SalesHistory = () => {
             </table>
           </div>
         </div>
+
+        {/* Pagination Controls */}
+        {totalPages > 0 && (
+          <div className="mt-6 flex flex-col sm:flex-row justify-between items-center gap-4">
+            <div className="flex items-center space-x-2">
+              <span className="text-sm text-gray-600">Rows per page:</span>
+              <select
+                value={pageSize}
+                onChange={handlePageSizeChange}
+                className="px-2 py-1 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+              >
+                <option value={10}>10</option>
+                <option value={20}>20</option>
+                <option value={30}>30</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+            </div>
+            
+            <div className="text-sm text-gray-600">
+              Showing {paginatedSales.length} of {totalElements} entries
+            </div>
+            
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={() => handlePageChange(currentPage - 1)}
+                disabled={currentPage === 0}
+                className="p-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              
+              <div className="flex space-x-1">
+                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                  let pageNum;
+                  if (totalPages <= 5) {
+                    pageNum = i;
+                  } else if (currentPage <= 2) {
+                    pageNum = i;
+                  } else if (currentPage >= totalPages - 3) {
+                    pageNum = totalPages - 5 + i;
+                  } else {
+                    pageNum = currentPage - 2 + i;
+                  }
+                  
+                  return (
+                    <button
+                      key={pageNum}
+                      onClick={() => handlePageChange(pageNum)}
+                      className={`px-3 py-1 rounded-lg text-sm transition-colors ${
+                        currentPage === pageNum
+                          ? 'bg-blue-600 text-white'
+                          : 'border border-gray-300 hover:bg-gray-50'
+                      }`}
+                    >
+                      {pageNum + 1}
+                    </button>
+                  );
+                })}
+              </div>
+              
+              <button
+                onClick={() => handlePageChange(currentPage + 1)}
+                disabled={currentPage === totalPages - 1}
+                className="p-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Edit Modal */}
+      {/* Edit Modal - Updated with discount fields */}
       {showEditModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl p-6 max-w-md w-full mx-4">
@@ -567,13 +756,52 @@ const SalesHistory = () => {
               </div>
               
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Amount (KES)</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Original Amount (KES)</label>
+                <input
+                  type="number"
+                  value={editFormData.originalAmount}
+                  onChange={(e) => {
+                    const newOriginal = parseFloat(e.target.value) || 0;
+                    const newDiscount = parseFloat(editFormData.discountAmount) || 0;
+                    const newFinal = newOriginal - newDiscount;
+                    setEditFormData({
+                      ...editFormData, 
+                      originalAmount: e.target.value,
+                      amount: newFinal >= 0 ? newFinal : 0
+                    });
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Discount Amount (KES)</label>
+                <input
+                  type="number"
+                  value={editFormData.discountAmount}
+                  onChange={(e) => {
+                    const newDiscount = parseFloat(e.target.value) || 0;
+                    const newOriginal = parseFloat(editFormData.originalAmount) || 0;
+                    const newFinal = newOriginal - newDiscount;
+                    setEditFormData({
+                      ...editFormData, 
+                      discountAmount: e.target.value,
+                      amount: newFinal >= 0 ? newFinal : 0
+                    });
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Final Amount (KES)</label>
                 <input
                   type="number"
                   value={editFormData.amount}
-                  onChange={(e) => setEditFormData({...editFormData, amount: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  disabled
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
                 />
+                <p className="text-xs text-gray-500 mt-1">Final = Original - Discount</p>
               </div>
               
               <div>
@@ -604,11 +832,11 @@ const SalesHistory = () => {
               
               {editFormData.method === 'CREDIT' && editFormData.status === 'PENDING' && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Remaining Balance (KES)</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Paid Amount (KES)</label>
                   <input
                     type="number"
-                    value={editFormData.remainingBalance}
-                    onChange={(e) => setEditFormData({...editFormData, remainingBalance: e.target.value})}
+                    value={editFormData.paidAmount}
+                    onChange={(e) => setEditFormData({...editFormData, paidAmount: e.target.value})}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                   />
                 </div>
